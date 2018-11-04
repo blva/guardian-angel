@@ -33,6 +33,10 @@ typedef struct sensor_events {
   bool is_raining;
 } sensor_events_t;
 
+void serial_write(char *data) {
+  chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_INFINITE);
+}
+
 /* Thread for reading sensors.
  * Read primary sensors:
  * 1. (HP) Velocity speed. -> check speed and speed limit and then activate or not buzzer.
@@ -53,7 +57,7 @@ static THD_FUNCTION(Thread1, arg) {
       //Do analog reading here
 
     /* Read Door sensor */
-    palReadPad(IOPORT4, RAIN_PORT) == PAL_HIGH ? strncpy(buffer,"HIGH!\r\n",sizeof(buffer)) : strncpy(buffer,"LOW!\r\n",sizeof(buffer));
+    palReadPad(IOPORT4, RAIN_PORT) == PAL_HIGH ? serial_write("High!\r\n") : serial_write("Low!\r\n");
     chnWrite(&SD1, (const uint8_t *)buffer, strlen(buffer));
     chThdSleepMilliseconds(1000);
   }
@@ -90,12 +94,12 @@ int main(void) {
    */
   sdStart(&SD1, NULL);
 
+  serial_write(" Starting Guardian Angel...\r\n");
   /*
-   * Starts the LED blinker thread.
+   * Starts the reading sensors thread.
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
-  chnWrite(&SD1, (const uint8_t *)"Guard Angel Started\r\n", 14);
 
   while (TRUE) {
     chThdSleepMilliseconds(1000);
