@@ -17,18 +17,27 @@
 #include "ch.h"
 #include "hal.h"
 
+#define RAIN_PORT 2
 /*
  * LED blinker thread, times are in milliseconds.
  */
 static THD_WORKING_AREA(waThread1, 32);
 static THD_FUNCTION(Thread1, arg) {
-
   (void)arg;
-  chRegSetThreadName("Blinker");
+
+  char buffer[200];
+
+  chRegSetThreadName("readSensors");
   while (true) {
     palTogglePad(IOPORT2, PORTB_LED1);
-    chThdSleepMilliseconds(1000);
+    palReadPad(IOPORT4, RAIN_PORT) == PAL_HIGH ? strncpy(buffer,"HIGH!\r\n",sizeof(buffer)) : strncpy(buffer,"LOW!\r\n",sizeof(buffer));
+    chnWrite(&SD1, (const uint8_t *)buffer, strlen(buffer));
+    chThdSleepMilliseconds(2000);
   }
+}
+
+void init_ports() {
+  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
 }
 
 /*
@@ -45,7 +54,7 @@ int main(void) {
    */
   halInit();
   chSysInit();
-
+  init_ports();
   /*
    * Activates the serial driver 1 using the driver default configuration.
    */
@@ -56,7 +65,8 @@ int main(void) {
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
-  chnWrite(&SD1, (const uint8_t *)"Hello World!\r\n", 14);
+
+  chnWrite(&SD1, (const uint8_t *)"Guard Angel\r\n", 14);
 
   while (TRUE) {
     chThdSleepMilliseconds(1000);
