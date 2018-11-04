@@ -17,10 +17,14 @@
 #include "ch.h"
 #include "hal.h"
 
-/* Definition of used ports */
+/* Definition of input ports */
 #define RAIN_PORT 2 //PD2
 #define DOOR_PORT 3 //PD3
 #define VELOCITY_PORT_ANALOG 0 // IOPORT3
+
+/* Definition of output ports */
+#define BUZZER_PORT 4 //PD4
+#define MOTOR_PORT 1 //IOPORT2 - PB1 = Pin 9 (PWM)
 
 typedef struct sensor_events {
   bool is_door_opened;
@@ -56,7 +60,14 @@ static THD_FUNCTION(Thread1, arg) {
 }
 
 void init_ports() {
+
+  /* Initialize input ports */
   palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
+  palSetPadMode(IOPORT4, DOOR_PORT, PAL_MODE_INPUT);
+  /* Initialize output ports */
+  palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
+  palSetPadMode(IOPORT2, MOTOR_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
+
 }
 
 /*
