@@ -17,9 +17,24 @@
 #include "ch.h"
 #include "hal.h"
 
-#define RAIN_PORT 2
-/*
- * LED blinker thread, times are in milliseconds.
+/* Definition of used ports */
+#define RAIN_PORT 2 //PD2
+#define DOOR_PORT 3 //PD3
+#define VELOCITY_PORT_ANALOG 0 // IOPORT3
+
+typedef struct sensor_events {
+  bool is_door_opened;
+  int bus_velocity;
+  bool is_bus_stoped;
+  bool is_raining;
+} sensor_events_t;
+
+/* Thread for reading sensors.
+ * Read primary sensors:
+ * 1. (HP) Velocity speed. -> check speed and speed limit and then activate or not buzzer.
+ * 2. (HP) Door sensor. -> check door sensor and if it is opened it is not possible to speed the bus.
+ * 3. Rain sensor. -> check raining sensor and reduces limit speed.
+ * 4. Ultrasonic sensor -> check ???
  */
 static THD_WORKING_AREA(waThread1, 32);
 static THD_FUNCTION(Thread1, arg) {
@@ -27,12 +42,16 @@ static THD_FUNCTION(Thread1, arg) {
 
   char buffer[200];
 
-  chRegSetThreadName("readSensors");
+  chRegSetThreadName("read-high-priority-sensors");
   while (true) {
-    palTogglePad(IOPORT2, PORTB_LED1);
+    /* Read velocity speed */
+      //This will determine wether the bus has stoped or not. 
+      //Do analog reading here
+
+    /* Read Door sensor */
     palReadPad(IOPORT4, RAIN_PORT) == PAL_HIGH ? strncpy(buffer,"HIGH!\r\n",sizeof(buffer)) : strncpy(buffer,"LOW!\r\n",sizeof(buffer));
     chnWrite(&SD1, (const uint8_t *)buffer, strlen(buffer));
-    chThdSleepMilliseconds(2000);
+    chThdSleepMilliseconds(1000);
   }
 }
 
@@ -65,8 +84,7 @@ int main(void) {
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
-
-  chnWrite(&SD1, (const uint8_t *)"Guard Angel\r\n", 14);
+  chnWrite(&SD1, (const uint8_t *)"Guard Angel Started\r\n", 14);
 
   while (TRUE) {
     chThdSleepMilliseconds(1000);

@@ -205,7 +205,7 @@ else
 endif
 
 # AVR serial port.
-AVRDUDE_PORT = /dev/ttyACM1
+AVRDUDE_PORT = /dev/ttyACM0
 
 AVRDUDE_WRITE_FLASH = -D -U flash:w:$(BUILDDIR)/$(PROJECT).hex:i
 
