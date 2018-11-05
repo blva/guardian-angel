@@ -1,21 +1,13 @@
-/*
-    ChibiOS - Copyright (C) 2006..2018 Giovanni Di Sirio
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
+/**
+ * Guardian Angel Project
+ * Authors: Bianca Lisle
+ *          Geraldo Braz
+ **/
 
 #include "ch.h"
 #include "hal.h"
+#include <chprintf.h>
+#include <string.h>
 
 /* Definition of input ports */
 #define RAIN_PORT 2 //PD2
@@ -26,6 +18,23 @@
 #define BUZZER_PORT 4 //PD4
 #define MOTOR_PORT 1 //IOPORT2 - PB1 = Pin 9 (PWM)
 
+/* ADC ports */
+#define NBR_CHANNELS 1
+#define DEPTH 5
+#define ADC_CONVERTER_FACTOR 0.00477922077922078 // ((2,5*1.0552519480519482)/552)
+
+/* Structures and variables */
+
+// State Machine
+typedef enum{
+    normal_state,
+    is_door_opened,
+    bus_overspeed,
+    is_bus_stoped,
+    is_raining
+}states;
+
+
 typedef struct sensor_events {
   bool is_door_opened;
   int bus_velocity;
@@ -33,9 +42,11 @@ typedef struct sensor_events {
   bool is_raining;
 } sensor_events_t;
 
-void serial_write(char *data) {
-  chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_INFINITE);
-}
+volatile uint8_t flag;
+
+/* Threads */
+
+ //FIXME: Study the possibility to create a thread for each sensor event
 
 /* Thread for reading sensors.
  * Read primary sensors:
@@ -63,6 +74,15 @@ static THD_FUNCTION(Thread1, arg) {
   }
 }
 
+/* Functions */
+void serial_write(char *data) {
+  chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_INFINITE);
+}
+
+void adc_cb(ADCDriver *adcp, adcsample_t *buffer, size_t n){
+  flag = 1;
+}
+
 void init_ports() {
 
   /* Initialize input ports */
@@ -87,6 +107,7 @@ int main(void) {
    *   RTOS is active.
    */
   halInit();
+
   chSysInit();
   init_ports();
   /*
@@ -95,13 +116,31 @@ int main(void) {
   sdStart(&SD1, NULL);
 
   serial_write(" Starting Guardian Angel...\r\n");
+
+  /* ADC configuration */
+  ADCConfig cfg = {ANALOG_REFERENCE_AVCC};
+  ADCConversionGroup group = {0, NBR_CHANNELS, adc_cb, 0x7};
+  adcsample_t buffer[DEPTH*NBR_CHANNELS];
+  adcStart(&ADCD1, &cfg);
+
   /*
    * Starts the reading sensors thread.
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
 
-  while (TRUE) {
-    chThdSleepMilliseconds(1000);
-  }
+  while(TRUE) {
+    adcStartConversion(&ADCD1, &group, buffer, DEPTH);
+
+    while(!flag){}
+      flag =0;
+
+      for(int i = 0; i < DEPTH; i++){
+      
+        //chprintf((BaseSequentialStream *)&SD1, "%.2f V\n\r",0.1911688311688311*buffer[i]);
+        // chprintf((BaseSequentialStream *)&SD1, ">> %d\n\r",buffer[i]);
+        chThdSleepMilliseconds(500);
+      }
+    }
+
 }
