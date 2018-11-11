@@ -3,9 +3,8 @@
  * Authors: Bianca Lisle
  *          Geraldo Braz
  **/
-#include "ch.h"
-#include "hal.h"
-#include <chprintf.h>
+#include <ch.h>
+#include <hal.h>
 #include <string.h>
 
 /* Definition of input ports */
@@ -65,8 +64,8 @@ static THD_FUNCTION(Thread1, arg) {
 
     /* Read Door sensor */
     palReadPad(IOPORT4, RAIN_PORT) == PAL_HIGH ? serial_write("High!\r\n") : serial_write("Low!\r\n");
-    chnWrite(&SD1, (const uint8_t *)buffer, strlen(buffer));
-    chThdSleepMilliseconds(1000);
+    //chnWrite(&SD1, (const uint8_t *)buffer, strlen(buffer));
+    chThdSleepMilliseconds(5000);
   }
 }
 
@@ -101,7 +100,17 @@ float speed2DutyCycle(int speed){
   return 0.5;
 }
 void motor_output(float dutyCycle){
-  // FIXME: Implement this methode
+  // FIXME: Implement this 
+  int step = 6;
+  int width = step;
+
+  serial_write("Pwm! \r\n");
+  pwmEnableChannel(&PWMD1, 1, width);
+  width += step;
+  if ((width >= 0x3FF) || (width < 10)) {
+      width -= step;
+      step = -step;
+  }
 }
 
 void buzzer_output(int state){
@@ -123,9 +132,18 @@ int main(void) {
    * - Kernel initialization, the main() function becomes a thread and the
    *   RTOS is active.
    */
+
+  static PWMConfig pwmcfg = {
+        0, 0x3FF, 0,
+        {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
+  };
+  
+
   halInit();
   chSysInit();
   initPorts();
+
+  pwmStart(&PWMD1, &pwmcfg);
   /*
    * Activates the serial driver 1 using the driver default configuration.
    */
@@ -144,31 +162,32 @@ int main(void) {
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
+  states state = bus_stopped; // state default
+  doorOpened = true;
 
   while(TRUE) {
     adcStartConversion(&ADCD1, &group, buffer, DEPTH);
-    states state = bus_stopped; // state default
-    doorOpened = true;
     
       // State Machine
       switch(state){
         case bus_stopped:
           if (doorOpened){
-             serial_write("Bus Stopped - Door is Open\r\n");
+            serial_write("Bus Stopped - Door is Opened\r\n");
 
+            motor_output(0);
             /* TODO:
               - set PWM to 0%
-              
               - Print on serial "Bus Stopped - Door is Open"
-
+              - Do not allow the motor to run
             */
-          }else{ // Door is close
-            serial_write("Bus Stopped - Door is Close\r\n");
+          } else { // Door is closed
+            serial_write("Bus Stopped - Door is Closed\r\n");
             
             if (getSpeed() >= 10){
               state = normal_state;
             }
             /* TODO:
+              - Allow motor powering
               - The bus can accelerate
               - If speed ultrapass 10km/h go to normal_state
               - Print on serial "Bus Stopped - Door is Close"
@@ -234,6 +253,7 @@ int main(void) {
 
       }
 
+  chThdSleepMilliseconds(3000);
 
 
     // while(!flag){}
@@ -243,7 +263,6 @@ int main(void) {
       
     //     //chprintf((BaseSequentialStream *)&SD1, "%.2f V\n\r",0.1911688311688311*buffer[i]);
     //     // chprintf((BaseSequentialStream *)&SD1, ">> %d\n\r",buffer[i]);
-    //     chThdSleepMilliseconds(500);
     //   }
     }
 
