@@ -82,8 +82,8 @@ endif
 # Define project name here.
 PROJECT = ch
 
-# Imported source files and paths
-CHIBIOS = ChibiOS_18.2.1
+# Imported source files and paths ChibiOS_18.2.1
+CHIBIOS = ../..
 # HAL-OSAL files (optional).
 include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/hal/boards/ARDUINO_UNO/board.mk

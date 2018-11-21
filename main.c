@@ -24,20 +24,20 @@
 
 // State Machine
 typedef enum{
-    normal_state,
-    is_door_opened,
-    bus_overspeed,
     bus_stopped,
-    is_raining
+    normal_state,
+    bluetooth_pairing
 }states;
 
 /* Structures and variables */
 volatile uint8_t flag;
 uint8_t maxSpeed = 100;
 uint8_t speed = 0;
+
 bool isRanning;
 bool doorOpened;
 bool overSpeed;
+
 char bufferADC[200];
 states state;
 
@@ -184,9 +184,10 @@ int main(void) {
         case bus_stopped:
           if (doorOpened){
             serial_write("Bus Stopped - Door is Opened\r\n");
-            motor_output(0);
-            doorOpened = 0;// FIXME: Delete this line later 
-            /* TODO:
+            motor_output(0); // Turning off the motor
+            doorOpened = 0; // FIXME: Delete this line later : This line simulate the close door button.
+            buzzer_output(1);
+            /* Functionalities:
               - set PWM to 0%
               - Print on serial "Bus Stopped - Door is Open"
               - Do not allow the motor to run
@@ -194,10 +195,12 @@ int main(void) {
           } else { // Door is closed
             serial_write("Bus Stopped - Door is Closed\r\n");
             // TODO: Check the speed value!
+            
+            // Wait the acceleration
             if (getSpeed(bufferADC[0]) >= 10){
               state = normal_state;
             }
-            /* TODO:
+            /* Functionalities:
               - Allow motor powering
               - The bus can accelerate
               - If speed ultrapass 10km/h go to normal_state
@@ -207,12 +210,9 @@ int main(void) {
           break;
         case normal_state:
             serial_write("Bus Normal State\r\n");
-            int speed = getSpeed(bufferADC);
-            motor_output(speed2DutyCycle(speed)); 
-            
-            
-
-            /* TODO:
+            motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the alanog value of the speed and converts it to duty cycle
+    
+            /* Functionalities:
               - The bus can accelerate
               - Relate the ADC with the duty cycle
               - Turn On the motor (PWM)
@@ -223,10 +223,9 @@ int main(void) {
         case is_door_opened:
             serial_write("Warning! - Door Opened\r\n");
             // Turning off the motor
-            motor_output(0); 
             state = bus_stopped;
 
-          /* TODO:
+          /* Functionalities:
               - Turn the buzzer to High            
               - Turn off the motor 
               - Go to bus_stopped state        
@@ -235,20 +234,16 @@ int main(void) {
           break;
         case bus_overspeed:
           serial_write("Warning! - Overspeed\r\n");
-          buzzer_output(2);
-        
-          if (getSpeed(bufferADC[0]) < maxSpeed){
-            state = normal_state;
-          }
+          buzzer_output(2); // 
           break;  
-
-          /* TODO:
+          /* Functionalities:
               - Turn the buzzer to High                  
               - Print on serial "Warning! - Overspeed"
             */
         case is_raining:
-          
+          serial_write("Warning! - It is Ranning\r\n");
           break;
+        
         default:
           state = bus_stopped;
           break;
