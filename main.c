@@ -43,7 +43,6 @@ bool isRanning;
 bool doorOpened;
 bool overSpeed;
 
-int bufferADC[200];// FIXME: Verify
 states state;
 
 /*  Config */
@@ -66,12 +65,12 @@ int forward_door_command(int command) {
 // Callback Fuctions
 void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
 
-  serial_write("This is the speed");
+  serial_write("This is the speed: \n");
 
-  for(int i = 0; i < DEPTH; i++) {
-    serial_write((char *)getSpeed(bufferADC[i]));
-  }
+  char print_buffer[200];
 
+  snprintf(print_buffer, sizeof(print_buffer), "%lld", bufferADC);
+  serial_write(print_buffer);
   // TODO: Print the value to debug
   //  Bus stopped starting to accelerate 
   if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
