@@ -8,6 +8,7 @@
 #include <hal.h>
 #include <string.h>
 #include <stdio.h>
+#include <chprintf.h>
 
 /* Definition of input ports */
 #define RAIN_PORT 2 //PD2
@@ -64,26 +65,28 @@ int forward_door_command(int command) {
 
 // Callback Fuctions
 void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
-  // FIXME: Print de speed! 
-  // if (getSpeed(bufferADC[0]) >= maxSpeed){
-  //     state = bus_overspeed;
-  // }
-    // TODO: Print the value to debug
-    serial_write((char *)getSpeed(bufferADC[0]));
-    //  Bus stopped starting to accelerate 
-    if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
-      state = normal_state;
-    }
 
-    // Overspeed
-    else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
-      state = overspeed_alert;
-    } 
-    
-    // Normal state
-    else if (getSpeed(bufferADC[0]) >= 10 && getSpeed(bufferADC[0]) <= maxSpeed){
-        state = normal_state;
-    }
+  serial_write("This is the speed");
+
+  for(int i = 0; i < DEPTH; i++) {
+    serial_write((char *)getSpeed(bufferADC[i]));
+  }
+
+  // TODO: Print the value to debug
+  //  Bus stopped starting to accelerate 
+  if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
+    state = normal_state;
+  }
+
+  // Overspeed
+  else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
+    state = overspeed_alert;
+  } 
+  
+  // Normal state
+  else if (getSpeed(bufferADC[0]) >= 10 && getSpeed(bufferADC[0]) <= maxSpeed){
+      state = normal_state;
+  }
 }
 
 // TODO: Create a interruption that checks if the door is open.
@@ -286,15 +289,6 @@ int main(void) {
 
   chThdSleepMilliseconds(3000);
 
-
-    // while(!flag){}
-    //   flag =0;
-
-    //   for(int i = 0; i < DEPTH; i++){
-      
-    //     //chprintf((BaseSequentialStream *)&SD1, "%.2f V\n\r",0.1911688311688311*buffer[i]);
-    //     // chprintf((BaseSequentialStream *)&SD1, ">> %d\n\r",buffer[i]);
-    //   }
     }
 
 }
