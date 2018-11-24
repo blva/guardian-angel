@@ -2,7 +2,7 @@
  * Guardian Angel Project
  * Authors: Bianca Lisle
  *          Geraldo Braz
-//  **/
+ **/
 
 #include <ch.h>
 #include <hal.h>
@@ -46,7 +46,7 @@ bool overSpeed;
 states state;
 
 /*  Config */
-void initPorts() {
+void initPorts(void) {
 
   /* Initialize input ports */
   palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
@@ -67,10 +67,12 @@ void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
 
   serial_write("This is the speed: \n");
 
-  char print_buffer[200];
+  for (int i = 0; i < n; i++) {
+    chnWriteTimeout(&SD1, (const uint8_t)ADC_CONVERTER_FACTOR*bufferADC[i],100 , TIME_INFINITE);
+  }
 
-  snprintf(print_buffer, sizeof(print_buffer), "%lld", bufferADC);
-  serial_write(print_buffer);
+  //snprintf(print_buffer, sizeof(print_buffer), "%lld", bufferADC);
+  //serial_write(print_buffer);
   // TODO: Print the value to debug
   //  Bus stopped starting to accelerate 
   if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
@@ -185,7 +187,7 @@ int main(void) {
           {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
   };
 
-  // ADC Config
+  /* ADC Config */
   ADCConfig cfg = {ANALOG_REFERENCE_AVCC};
   ADCConversionGroup group = {0, NBR_CHANNELS, adc_cb, 0x7};
   adcsample_t bufferADC[DEPTH*NBR_CHANNELS];
