@@ -25,6 +25,9 @@
 // State Machine
 typedef enum{
     bus_stopped,
+    waiting_acceleration,
+    rain_alert,
+    overspeed_alert,
     normal_state,
     bluetooth_pairing
 }states;
@@ -83,6 +86,11 @@ void initPorts() {
   palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
   palSetPadMode(IOPORT2, MOTOR_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
 
+}
+
+int foward_door_command(int command) {
+  /* This function fowards the door command to the bus, otherwise, the door is not opened */
+  bool door_opened = command;
 }
 
 // Callback Fuctions
@@ -179,39 +187,32 @@ int main(void) {
 
   while(TRUE) {
       adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
-      // State Machine
+      /* Starts State Machine */
       switch(state){
         case bus_stopped:
-          if (doorOpened){
-            serial_write("Bus Stopped - Door is Opened\r\n");
-            motor_output(0); // Turning off the motor
-            doorOpened = 0; // FIXME: Delete this line later : This line simulate the close door button.
-            buzzer_output(1);
             /* Functionalities:
               - set PWM to 0%
               - Print on serial "Bus Stopped - Door is Open"
               - Do not allow the motor to run
             */
-          } else { // Door is closed
-            serial_write("Bus Stopped - Door is Closed\r\n");
-            // TODO: Check the speed value!
-            
-            // Wait the acceleration
-            if (getSpeed(bufferADC[0]) >= 10){
-              state = normal_state;
-            }
+            serial_write("Bus Stopped - Waiting for closed door\r\n");
+            motor_output(0); // Turning off the motor
+           
+            break;
+        case waiting_acceleration:
             /* Functionalities:
               - Allow motor powering
               - The bus can accelerate
               - If speed ultrapass 10km/h go to normal_state
-              - Print on serial "Bus Stopped - Door is Close"
+              - If door is opened, goes back to bus_stopped
+              - Print on serial "Door closed, waiting for acceleration"
             */
-          }  
+            if (getSpeed(bufferADC[0]) >= 10){
+              state = normal_state;
+            }
+
           break;
         case normal_state:
-            serial_write("Bus Normal State\r\n");
-            motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the alanog value of the speed and converts it to duty cycle
-    
             /* Functionalities:
               - The bus can accelerate
               - Relate the ADC with the duty cycle
@@ -219,30 +220,38 @@ int main(void) {
               - If the speed ultrapass the limit go to another state
               - Print on serial "Bus Normal State"
             */
-          break;
-        case is_door_opened:
-            serial_write("Warning! - Door Opened\r\n");
-            // Turning off the motor
-            state = bus_stopped;
+            serial_write("Bus Normal State\r\n");
+            motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+    
 
-          /* Functionalities:
-              - Turn the buzzer to High            
-              - Turn off the motor 
-              - Go to bus_stopped state        
-              - Print on serial "Warning! - Door Opened"
-            */
           break;
-        case bus_overspeed:
+        case rain_alert:
+          /* Functionalities:
+              - Check if rain stopped or started
+              - Turn the buzzer to High
+              - Change speed limit        
+          */
+
+          /* Check wether rain is over or just started! */
+          serial_write("Warning! - It is Ranning\r\n");
+          buzzer_output(2); // 
+
+          /* Setting new speed limit */
+          //Todo Call this function
+
+          /* Go back to normal state until rain is over/starts */ 
+          state = normal_state;
+
+          break;
+        case overspeed_alert:
+          /* Functionalities:
+            - Turn the buzzer to High                  
+            - Print on serial "Warning! - Overspeed"
+            - Only leave state after overspeed
+          */
           serial_write("Warning! - Overspeed\r\n");
           buzzer_output(2); // 
           break;  
-          /* Functionalities:
-              - Turn the buzzer to High                  
-              - Print on serial "Warning! - Overspeed"
-            */
-        case is_raining:
-          serial_write("Warning! - It is Ranning\r\n");
-          break;
         
         default:
           state = bus_stopped;
