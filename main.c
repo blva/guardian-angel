@@ -2,7 +2,8 @@
  * Guardian Angel Project
  * Authors: Bianca Lisle
  *          Geraldo Braz
- **/
+//  **/
+
 #include <ch.h>
 #include <hal.h>
 #include <string.h>
@@ -34,15 +35,117 @@ typedef enum{
 
 /* Structures and variables */
 volatile uint8_t flag;
-uint8_t maxSpeed = 100;
-uint8_t speed = 0;
+int maxSpeed = 100;
+int speed = 0;
 
 bool isRanning;
 bool doorOpened;
 bool overSpeed;
 
-char bufferADC[200];
+int bufferADC[200];// FIXME: Verify
 states state;
+
+/*  Config */
+void initPorts() {
+
+  /* Initialize input ports */
+  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
+  palSetPadMode(IOPORT4, DOOR_PORT, PAL_MODE_INPUT);
+  /* Initialize output ports */
+  palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
+  palSetPadMode(IOPORT2, MOTOR_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
+
+}
+
+int forward_door_command(int command) {
+  /* This function forwards the door command to the bus, otherwise, the door is not opened */
+  bool door_opened = command;
+}
+
+// Callback Fuctions
+void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
+  // FIXME: Print de speed! 
+  // if (getSpeed(bufferADC[0]) >= maxSpeed){
+  //     state = bus_overspeed;
+  // }
+    // TODO: Print the value to debug
+    serial_write((char *)getSpeed(bufferADC[0]));
+    //  Bus stopped starting to accelerate 
+    if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
+      state = normal_state;
+    }
+
+    // Overspeed
+    else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
+      state = overspeed_alert;
+    } 
+    
+    // Normal state
+    else if (getSpeed(bufferADC[0]) >= 10 && getSpeed(bufferADC[0]) <= maxSpeed){
+        state = normal_state;
+    }
+}
+
+// TODO: Create a interruption that checks if the door is open.
+void doorOpened_cb(){
+  // state = waiting_acceleration;
+}
+
+
+//  ********* Threads *********
+void rainButton_cb(){
+  state = rain_alert;
+}
+
+void overSpeed_cb(){
+  state = overspeed_alert;
+}
+//  ***************************
+
+/* Aux Functions */
+void serial_write(char *data) {
+  chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_INFINITE);
+}
+
+int getSpeed(int adcValue){
+  return (ADC_CONVERTER_FACTOR*adcValue);
+  // return (ADC_CONVERTER_FACTOR* (int)buffer);
+}
+
+void setMaxSpeed(int speed){
+    maxSpeed = speed;
+}
+
+float speed2DutyCycle(int speed){
+  // FIXME: Implement this methode
+  return 0.5;
+}
+
+
+
+void motor_output(float dutyCycle){
+  int step = 6;
+  int width = step;
+
+  // TODO: Print the Duty Cycle
+  // serial_write("Pwm! \r\n");
+  pwmEnableChannel(&PWMD1, 1, width);
+  width += step;
+  if ((width >= 0x3FF) || (width < 10)) {
+      width -= step;
+      step = -step;
+  }
+}
+
+void buzzer_output(int state){
+    switch (state){
+        case 0: // Opened door
+            break;
+        case 1: // Raining
+            break;
+    }
+
+}
 
 /* Threads */
 
@@ -58,9 +161,6 @@ states state;
 static THD_WORKING_AREA(waThread1, 32);
 static THD_FUNCTION(Thread1, arg) {
   (void)arg;
-
-  
-
   chRegSetThreadName("read-high-priority-sensors");
   while (true) {
     /* Read velocity speed */
@@ -75,83 +175,6 @@ static THD_FUNCTION(Thread1, arg) {
 }
 
 
-
-/*  Config */
-void initPorts() {
-
-  /* Initialize input ports */
-  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
-  palSetPadMode(IOPORT4, DOOR_PORT, PAL_MODE_INPUT);
-  /* Initialize output ports */
-  palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
-  palSetPadMode(IOPORT2, MOTOR_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
-
-}
-
-int foward_door_command(int command) {
-  /* This function fowards the door command to the bus, otherwise, the door is not opened */
-  bool door_opened = command;
-}
-
-// Callback Fuctions
-void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
-  // FIXME: Print de speed! 
-  if (getSpeed(bufferADC[0]) >= maxSpeed){
-      state = bus_overspeed;
-  }
-
-}
-
-void rainButton_cb(){
-  state = is_raining;
-}
-
-void doorOpened_cb(){
-  state = is_door_opened;
-}
-
-void overSpeed_cb(){
-  state = bus_overspeed;
-}
-
-/* Aux Functions */
-void serial_write(char *data) {
-  chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_INFINITE);
-}
-
-int getSpeed(char buffer){
-  return (ADC_CONVERTER_FACTOR*buffer);
-}
-
-float speed2DutyCycle(int speed){
-  // FIXME: Implement this methode
-  return 0.5;
-}
-
-void motor_output(float dutyCycle){
-  int step = 6;
-  int width = step;
-
-  // TODO: Print the Duty Cycle
-  serial_write("Pwm! \r\n");
-  pwmEnableChannel(&PWMD1, 1, width);
-  width += step;
-  if ((width >= 0x3FF) || (width < 10)) {
-      width -= step;
-      step = -step;
-  }
-}
-
-void buzzer_output(int state){
-  // FIXME: Implement this methode
-  //  If state is:
-  //  1: Play the song number 1 (Door Opened )
-  //  2: Play the song number 2 (Over Speed)
-}
-
-/*
- * Application entry point.
- */
 int main(void) {
 
   // PWM Config
@@ -189,6 +212,7 @@ int main(void) {
       adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
       /* Starts State Machine */
       switch(state){
+
         case bus_stopped:
             /* Functionalities:
               - set PWM to 0%
@@ -197,6 +221,12 @@ int main(void) {
             */
             serial_write("Bus Stopped - Waiting for closed door\r\n");
             motor_output(0); // Turning off the motor
+            buzzer_output(0); //
+            
+            //FIXME: Delete me after
+            chThdSleepMilliseconds(3000);
+            state = waiting_acceleration;
+            //
            
             break;
         case waiting_acceleration:
@@ -207,9 +237,8 @@ int main(void) {
               - If door is opened, goes back to bus_stopped
               - Print on serial "Door closed, waiting for acceleration"
             */
-            if (getSpeed(bufferADC[0]) >= 10){
-              state = normal_state;
-            }
+            serial_write("Door closed, waiting for acceleration\r\n");
+            chThdSleepMilliseconds(100);
 
           break;
         case normal_state:
@@ -222,7 +251,6 @@ int main(void) {
             */
             serial_write("Bus Normal State\r\n");
             motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
-    
 
           break;
         case rain_alert:
@@ -233,15 +261,11 @@ int main(void) {
           */
 
           /* Check wether rain is over or just started! */
-          serial_write("Warning! - It is Ranning\r\n");
-          buzzer_output(2); // 
-
+          serial_write("Warning! - It is Ranning\r\n");    
           /* Setting new speed limit */
-          //Todo Call this function
-
-          /* Go back to normal state until rain is over/starts */ 
+          setMaxSpeed(80);
+          /* Go back to normal state */ 
           state = normal_state;
-
           break;
         case overspeed_alert:
           /* Functionalities:
@@ -250,7 +274,7 @@ int main(void) {
             - Only leave state after overspeed
           */
           serial_write("Warning! - Overspeed\r\n");
-          buzzer_output(2); // 
+          buzzer_output(1); // 
           break;  
         
         default:
