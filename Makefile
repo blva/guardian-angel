@@ -1,4 +1,3 @@
-
 ##############################################################################
 #
 # @file   Makefile.
@@ -102,7 +101,7 @@ CSRC =  $(KERNSRC)                      \
         $(BOARDSRC)                     \
         $(CHIBIOS)/os/various/evtimer.c \
 	$(CHIBIOS)/os/hal/lib/streams/chprintf.c\
-        main.c
+	main.c
 
 # List C++ sources file here.
 CPPSRC =
@@ -209,7 +208,7 @@ endif
 # AVR serial port.
 AVRDUDE_PORT = /dev/ttyACM0
 
-AVRDUDE_WRITE_FLASH = -D -U flash:w:$(BUILDDIR)/$(PROJECT).hex:i
+AVRDUDE_WRITE_FLASH = -D -U flash:w:$(BUILDDIR)/$(PROJECT).hex
 
 # Check if the counter cycle erase must be performed after device programming.
 ifeq ($(USE_AVRDUDE_ERASE_COUNTER),yes)

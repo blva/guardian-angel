@@ -60,24 +60,28 @@ void initPorts(void) {
 int forward_door_command(int command) {
   /* This function forwards the door command to the bus, otherwise, the door is not opened */
   bool door_opened = command;
+  return 1;
+}
+
+void serial_write(char *data) {
+  //chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_IMMEDIATE);
+  chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
 }
 
 // Callback Fuctions
+volatile uint8_t got_adc;
 void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
+  got_adc = 1;
+}
 
-  serial_write("This is the speed: \n");
-
-  for (int i = 0; i < n; i++) {
-    chnWriteTimeout(&SD1, (const uint8_t)ADC_CONVERTER_FACTOR*bufferADC[i],100 , TIME_INFINITE);
-  }
-
-  //snprintf(print_buffer, sizeof(print_buffer), "%lld", bufferADC);
-  //serial_write(print_buffer);
-  // TODO: Print the value to debug
-  //  Bus stopped starting to accelerate 
-  if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
-    state = normal_state;
-  }
+void get_adc_convertion(adcsample_t *bufferADC) {
+  char mybuffer[DEPTH];
+  int i;
+  sprintf(mybuffer, "value: %u V\r\n", bufferADC[0]);
+  serial_write(mybuffer);
+  got_adc = 0;
+  chThdSleepMilliseconds(500);
+}
 
   // Overspeed
   else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
@@ -91,17 +95,17 @@ void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
 }
 
 // TODO: Create a interruption that checks if the door is open.
-void doorOpened_cb(){
+void doorOpened_cb(void){
   // state = waiting_acceleration;
 }
 
 
 //  ********* Threads *********
-void rainButton_cb(){
+void rainButton_cb(void){
   state = rain_alert;
 }
 
-void overSpeed_cb(){
+void overSpeed_cb(void){
   state = overspeed_alert;
 }
 //  ***************************
@@ -112,7 +116,23 @@ void serial_write(char *data) {
 }
 
 int getSpeed(int adcValue){
-  return (ADC_CONVERTER_FACTOR*adcValue);
+  //return (ADC_CONVERTER_FACTOR*adcValue);
+    // TODO: Print the value to debug
+  //  Bus stopped starting to accelerate 
+  // if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
+  //   state = normal_state;
+  // }
+
+  // // Overspeed
+  // else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
+  //   state = overspeed_alert;
+  // } 
+  
+  // // Normal state
+  // else if (getSpeed(bufferADC[0]) >= 10 && getSpeed(bufferADC[0]) <= maxSpeed){
+  //     state = normal_state;
+  // }
+  return 1;
   // return (ADC_CONVERTER_FACTOR* (int)buffer);
 }
 
@@ -218,16 +238,16 @@ int main(void) {
       switch(state){
 
         case bus_stopped:
-            /* Functionalities:
-              - set PWM to 0%
-              - Print on serial "Bus Stopped - Door is Open"
-              - Do not allow the motor to run
-            */
-            serial_write("Bus Stopped - Waiting for closed door\r\n");
-            motor_output(0); // Turning off the motor
-            buzzer_output(0); //
-            
-            //FIXME: Delete me after
+          /* Functionalities:
+            - set PWM to 0%
+            - Print on serial "Bus Stopped - Door is Open"
+            - Do not allow the motor to run
+          */
+          serial_write("Bus Stopped - Waiting for closed door\r\n");
+          //motor_output(0); // Turning off the motor
+          //buzzer_output(0); //
+          
+          //FIXME: Delete me after
             chThdSleepMilliseconds(3000);
             state = waiting_acceleration;
             //
