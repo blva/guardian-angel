@@ -83,7 +83,7 @@ endif
 PROJECT = ch
 
 # Imported source files and paths ChibiOS_18.2.1
-CHIBIOS = ../..
+CHIBIOS = ChibiOS_18.2.1
 # HAL-OSAL files (optional).
 include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/hal/boards/ARDUINO_UNO/board.mk
@@ -101,6 +101,7 @@ CSRC =  $(KERNSRC)                      \
         $(PLATFORMSRC)                  \
         $(BOARDSRC)                     \
         $(CHIBIOS)/os/various/evtimer.c \
+	$(CHIBIOS)/os/hal/lib/streams/chprintf.c\
         main.c
 
 # List C++ sources file here.
@@ -108,7 +109,8 @@ CPPSRC =
 
 INCDIR =  $(CHIBIOS)/os/license $(PORTINC) $(KERNINC)  \
           $(HALINC) $(OSALINC) $(PLATFORMINC)          \
-          $(BOARDINC) $(CHIBIOS)/os/various
+          $(CHIBIOS)/os/hal/lib/streams/               \
+		  $(BOARDINC) $(CHIBIOS)/os/various
 
 #
 # Project, sources and paths.
