@@ -83,17 +83,6 @@ void get_adc_convertion(adcsample_t *bufferADC) {
   chThdSleepMilliseconds(500);
 }
 
-  // Overspeed
-  else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
-    state = overspeed_alert;
-  } 
-  
-  // Normal state
-  else if (getSpeed(bufferADC[0]) >= 10 && getSpeed(bufferADC[0]) <= maxSpeed){
-      state = normal_state;
-  }
-}
-
 // TODO: Create a interruption that checks if the door is open.
 void doorOpened_cb(void){
   // state = waiting_acceleration;
@@ -111,9 +100,6 @@ void overSpeed_cb(void){
 //  ***************************
 
 /* Aux Functions */
-void serial_write(char *data) {
-  chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_INFINITE);
-}
 
 int getSpeed(int adcValue){
   //return (ADC_CONVERTER_FACTOR*adcValue);
@@ -198,10 +184,85 @@ static THD_FUNCTION(Thread1, arg) {
   }
 }
 
+void st_machine(adcsample_t *bufferADC) {
+
+      /* Starts State Machine */
+      switch(state){
+        case bus_stopped:
+          /* Functionalities:
+            - set PWM to 0%
+            - Print on serial "Bus Stopped - Door is Open"
+            - Do not allow the motor to run
+          */
+          serial_write("Bus Stopped - Waiting for closed door\r\n");
+          //motor_output(0); // Turning off the motor
+          //buzzer_output(0); //
+          
+          //FIXME: Delete me after
+          state = waiting_acceleration;
+          //
+          break;
+        case waiting_acceleration:
+            /* Functionalities:
+              - Allow motor powering
+              - The bus can accelerate
+              - If speed ultrapass 10km/h go to normal_state
+              - If door is opened, goes back to bus_stopped
+              - Print on serial "Door closed, waiting for acceleration"
+            */
+            serial_write("Door closed, waiting for acceleration\r\n");
+            if (got_adc) {
+              serial_write("getting adc\r\n");
+              get_adc_convertion(bufferADC);
+              state = normal_state;
+            }
+            serial_write("proceeding\r\n");
+            break;
+        case normal_state:
+          /* Functionalities:
+            - The bus can accelerate
+            - Relate the ADC with the duty cycle
+            - Turn On the motor (PWM)
+            - If the speed ultrapass the limit go to another state
+            - Print on serial "Bus Normal State"
+          */
+          serial_write("Bus Normal State\r\n");
+          //motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+
+          break;
+        case rain_alert:
+          /* Functionalities:
+              - Check if rain stopped or started
+              - Turn the buzzer to High
+              - Change speed limit        
+          */
+
+          /* Check wether rain is over or just started! */
+          serial_write("Warning! - It is Ranning\r\n");    
+          /* Setting new speed limit */
+         // setMaxSpeed(80);
+          /* Go back to normal state */ 
+          state = normal_state;
+          break;
+
+        case overspeed_alert:
+          /* Functionalities:
+            - Turn the buzzer to High                  
+            - Print on serial "Warning! - Overspeed"
+            - Only leave state after overspeed
+          */
+          serial_write("Warning! - Overspeed\r\n");
+         // buzzer_output(1); // 
+          break;  
+        default:
+          state = bus_stopped;
+          break;
+      }
+}
 
 int main(void) {
 
-  // PWM Config
+  /* PWM Config */
   static PWMConfig pwmcfg = {
           0, 0x3FF, 0,
           {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
@@ -219,10 +280,10 @@ int main(void) {
 
   pwmStart(&PWMD1, &pwmcfg);
   sdStart(&SD1, NULL);
+
+  serial_write("Guardian Angel \r\n");
+
   adcStart(&ADCD1, &cfg);
-
-  serial_write(" Starting Guardian Angel...\r\n");
-
 
   /*
    * Starts the reading sensors thread.
@@ -233,83 +294,8 @@ int main(void) {
   doorOpened = true;
 
   while(TRUE) {
-      adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
-      /* Starts State Machine */
-      switch(state){
-
-        case bus_stopped:
-          /* Functionalities:
-            - set PWM to 0%
-            - Print on serial "Bus Stopped - Door is Open"
-            - Do not allow the motor to run
-          */
-          serial_write("Bus Stopped - Waiting for closed door\r\n");
-          //motor_output(0); // Turning off the motor
-          //buzzer_output(0); //
-          
-          //FIXME: Delete me after
-            chThdSleepMilliseconds(3000);
-            state = waiting_acceleration;
-            //
-           
-            break;
-        case waiting_acceleration:
-            /* Functionalities:
-              - Allow motor powering
-              - The bus can accelerate
-              - If speed ultrapass 10km/h go to normal_state
-              - If door is opened, goes back to bus_stopped
-              - Print on serial "Door closed, waiting for acceleration"
-            */
-            serial_write("Door closed, waiting for acceleration\r\n");
-            chThdSleepMilliseconds(100);
-
-          break;
-        case normal_state:
-            /* Functionalities:
-              - The bus can accelerate
-              - Relate the ADC with the duty cycle
-              - Turn On the motor (PWM)
-              - If the speed ultrapass the limit go to another state
-              - Print on serial "Bus Normal State"
-            */
-            serial_write("Bus Normal State\r\n");
-            motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
-
-          break;
-        case rain_alert:
-          /* Functionalities:
-              - Check if rain stopped or started
-              - Turn the buzzer to High
-              - Change speed limit        
-          */
-
-          /* Check wether rain is over or just started! */
-          serial_write("Warning! - It is Ranning\r\n");    
-          /* Setting new speed limit */
-          setMaxSpeed(80);
-          /* Go back to normal state */ 
-          state = normal_state;
-          break;
-        case overspeed_alert:
-          /* Functionalities:
-            - Turn the buzzer to High                  
-            - Print on serial "Warning! - Overspeed"
-            - Only leave state after overspeed
-          */
-          serial_write("Warning! - Overspeed\r\n");
-          buzzer_output(1); // 
-          break;  
-        
-        default:
-          state = bus_stopped;
-          break;
-
-
-      }
-
-  chThdSleepMilliseconds(3000);
-
-    }
-
+    adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
+    st_machine(bufferADC);
+    chThdSleepMilliseconds(3000);
+  }
 }
