@@ -63,7 +63,7 @@ int forward_door_command(int command) {
   return 1;
 }
 
-void serial_write(char *data) {
+void serial_write(void *data) {
   //chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_IMMEDIATE);
   chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
 }
@@ -75,10 +75,8 @@ void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
 }
 
 void get_adc_convertion(adcsample_t *bufferADC) {
-  char mybuffer[DEPTH];
-  int i;
-  sprintf(mybuffer, "value: %u V\r\n", bufferADC[0]);
-  serial_write(mybuffer);
+  uint16_t number = ADC_CONVERTER_FACTOR * bufferADC[0];
+  chprintf((BaseSequentialStream *)&SD1, "%2.u V\n\r",number);
   got_adc = 0;
   chThdSleepMilliseconds(500);
 }
@@ -212,11 +210,10 @@ void st_machine(adcsample_t *bufferADC) {
             */
             serial_write("Door closed, waiting for acceleration\r\n");
             if (got_adc) {
-              serial_write("getting adc\r\n");
+              serial_write("getting voltage: \r\n");
               get_adc_convertion(bufferADC);
               state = normal_state;
             }
-            serial_write("proceeding\r\n");
             break;
         case normal_state:
           /* Functionalities:
@@ -227,7 +224,7 @@ void st_machine(adcsample_t *bufferADC) {
             - Print on serial "Bus Normal State"
           */
           serial_write("Bus Normal State\r\n");
-          //motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+          motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
 
           break;
         case rain_alert:
@@ -258,6 +255,8 @@ void st_machine(adcsample_t *bufferADC) {
           state = bus_stopped;
           break;
       }
+
+    serial_write("Tick!\n");
 }
 
 int main(void) {
