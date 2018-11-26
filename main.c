@@ -23,6 +23,13 @@
 #define NBR_CHANNELS 1
 #define DEPTH 5
 #define ADC_CONVERTER_FACTOR 0.00477922077922078 // ((2,5*1.0552519480519482)/552)
+#define MAXIMUM_VOLTAGE 5
+#define MINIMUM_VOLTAGE 0.5
+#define BUS_MAXIMUM_SUPPORTED_SPEED 100 /* Bus speed in km/h */
+
+float get_adc_convert_value(void) {
+  return BUS_MAXIMUM_SUPPORTED_SPEED/(MAXIMUM_VOLTAGE - MINIMUM_VOLTAGE);
+}
 
 // State Machine
 typedef enum{
@@ -38,6 +45,7 @@ typedef enum{
 volatile uint8_t flag;
 int maxSpeed = 100;
 int speed = 0;
+float adc_to_speed_cvalue; 
 
 bool isRanning;
 bool doorOpened;
@@ -64,21 +72,13 @@ int forward_door_command(int command) {
 }
 
 void serial_write(void *data) {
-  //chnWriteTimeout(&SD1, (const uint8_t *)data, strlen(data), TIME_IMMEDIATE);
   chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
 }
 
-// Callback Fuctions
+/* Callback functions */
 volatile uint8_t got_adc;
-void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n){
+void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n) {
   got_adc = 1;
-}
-
-void get_adc_convertion(adcsample_t *bufferADC) {
-  uint16_t number = ADC_CONVERTER_FACTOR * bufferADC[0];
-  chprintf((BaseSequentialStream *)&SD1, "%2.u V\n\r",number);
-  got_adc = 0;
-  chThdSleepMilliseconds(500);
 }
 
 // TODO: Create a interruption that checks if the door is open.
@@ -99,25 +99,15 @@ void overSpeed_cb(void){
 
 /* Aux Functions */
 
-int getSpeed(int adcValue){
-  //return (ADC_CONVERTER_FACTOR*adcValue);
-    // TODO: Print the value to debug
-  //  Bus stopped starting to accelerate 
-  // if (getSpeed(bufferADC[0]) >= 10 && state == waiting_acceleration){
-  //   state = normal_state;
-  // }
+uint64_t get_adc_convertion(adcsample_t *bufferADC) {
+  uint16_t number = ADC_CONVERTER_FACTOR * bufferADC[0];
+  got_adc = 0;
+  return number;
+}
 
-  // // Overspeed
-  // else if (getSpeed(bufferADC[0]) >= maxSpeed && state == normal_state){
-  //   state = overspeed_alert;
-  // } 
-  
-  // // Normal state
-  // else if (getSpeed(bufferADC[0]) >= 10 && getSpeed(bufferADC[0]) <= maxSpeed){
-  //     state = normal_state;
-  // }
-  return 1;
-  // return (ADC_CONVERTER_FACTOR* (int)buffer);
+int getSpeed(uint16_t adcValue){
+  uint16_t number = (adcValue) * (adc_to_speed_cvalue);
+  return adcValue*adc_to_speed_cvalue;
 }
 
 void setMaxSpeed(int speed){
@@ -155,6 +145,22 @@ void buzzer_output(int state){
 
 }
 
+/**
+ * @brief   Identifies wether speed is above limit ot not.
+ *
+ * @param[in] speed    Integer to indicate speed value
+ * @param[in] limit    Integer to indicate limit to compair
+ * @return  Null if speed is NOT above limit and 1 if speed is above limit
+ */
+int is_speed_above_limit(int speed, int limit) {
+  int ret = 1;
+  if (speed <= limit) {
+    ret = 0;
+  }
+
+  return ret;
+}
+
 /* Threads */
 
  // FIXME: Study the possibility to create a thread for each sensor event
@@ -183,80 +189,85 @@ static THD_FUNCTION(Thread1, arg) {
 }
 
 void st_machine(adcsample_t *bufferADC) {
+  uint16_t adc_value = 0;
+  int ret;
 
-      /* Starts State Machine */
-      switch(state){
-        case bus_stopped:
-          /* Functionalities:
-            - set PWM to 0%
-            - Print on serial "Bus Stopped - Door is Open"
-            - Do not allow the motor to run
-          */
-          serial_write("Bus Stopped - Waiting for closed door\r\n");
-          //motor_output(0); // Turning off the motor
-          //buzzer_output(0); //
-          
-          //FIXME: Delete me after
-          state = waiting_acceleration;
-          //
-          break;
-        case waiting_acceleration:
-            /* Functionalities:
-              - Allow motor powering
-              - The bus can accelerate
-              - If speed ultrapass 10km/h go to normal_state
-              - If door is opened, goes back to bus_stopped
-              - Print on serial "Door closed, waiting for acceleration"
-            */
-            serial_write("Door closed, waiting for acceleration\r\n");
-            if (got_adc) {
-              serial_write("getting voltage: \r\n");
-              get_adc_convertion(bufferADC);
-              state = normal_state;
-            }
-            break;
-        case normal_state:
-          /* Functionalities:
-            - The bus can accelerate
-            - Relate the ADC with the duty cycle
-            - Turn On the motor (PWM)
-            - If the speed ultrapass the limit go to another state
-            - Print on serial "Bus Normal State"
-          */
-          serial_write("Bus Normal State\r\n");
-          motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+  /* Starts State Machine */
+  switch(state){
+    case bus_stopped:
+      /* Functionalities:
+        - set PWM to 0%
+        - Print on serial "Bus Stopped - Door is Open"
+        - Do not allow the motor to run
+      */
+      serial_write("Bus Stopped - Waiting for closed door\r\n");
+      //motor_output(0); // Turning off the motor
+      //buzzer_output(0); //
+      
+      //FIXME: Delete me after
+      state = waiting_acceleration;
+      //
+      break;
+    case waiting_acceleration:
+      /* Functionalities:
+        - Allow motor powering
+        - The bus can accelerate
+        - If speed ultrapass 10km/h go to normal_state
+        - If door is opened, goes back to bus_stopped
+        - Print on serial "Door closed, waiting for acceleration"
+      */
+      
+      //TODO -> add motor output
+      serial_write("Door closed, waiting for acceleration\r\n");
 
-          break;
-        case rain_alert:
-          /* Functionalities:
-              - Check if rain stopped or started
-              - Turn the buzzer to High
-              - Change speed limit        
-          */
-
-          /* Check wether rain is over or just started! */
-          serial_write("Warning! - It is Ranning\r\n");    
-          /* Setting new speed limit */
-         // setMaxSpeed(80);
-          /* Go back to normal state */ 
-          state = normal_state;
-          break;
-
-        case overspeed_alert:
-          /* Functionalities:
-            - Turn the buzzer to High                  
-            - Print on serial "Warning! - Overspeed"
-            - Only leave state after overspeed
-          */
-          serial_write("Warning! - Overspeed\r\n");
-         // buzzer_output(1); // 
-          break;  
-        default:
-          state = bus_stopped;
-          break;
+      if (got_adc) {
+        adc_value = get_adc_convertion(bufferADC);
       }
 
-    serial_write("Tick!\n");
+      //ret = is_speed_above_limit(getSpeed(adc_value), 10);
+      // state = (ret) ? normal_state : waiting_acceleration;
+
+      break;
+    case normal_state:
+      /* Functionalities:
+        - The bus can accelerate
+        - Relate the ADC with the duty cycle
+        - Turn On the motor (PWM)
+        - If the speed ultrapass the limit go to another state
+        - Print on serial "Bus Normal State"
+      */
+      serial_write("Bus Normal State\r\n");
+     // motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+
+      break;
+    case rain_alert:
+      /* Functionalities:
+          - Check if rain stopped or started
+          - Turn the buzzer to High
+          - Change speed limit        
+      */
+
+      /* Check wether rain is over or just started! */
+      serial_write("Warning! - It is Ranning\r\n");    
+      /* Setting new speed limit */
+      // setMaxSpeed(80);
+      /* Go back to normal state */ 
+      state = normal_state;
+      break;
+
+    case overspeed_alert:
+      /* Functionalities:
+        - Turn the buzzer to High                  
+        - Print on serial "Warning! - Overspeed"
+        - Only leave state after overspeed
+      */
+      serial_write("Warning! - Overspeed\r\n");
+      // buzzer_output(1); // 
+      break;  
+    default:
+      state = bus_stopped;
+      break;
+  }
 }
 
 int main(void) {
@@ -283,6 +294,7 @@ int main(void) {
   serial_write("Guardian Angel \r\n");
 
   adcStart(&ADCD1, &cfg);
+  adc_to_speed_cvalue = get_adc_convert_value();
 
   /*
    * Starts the reading sensors thread.
@@ -293,8 +305,11 @@ int main(void) {
   doorOpened = true;
 
   while(TRUE) {
+    /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
+    /* Run state machine */
     st_machine(bufferADC);
+    /* Sleep time of the "main" thread */
     chThdSleepMilliseconds(3000);
   }
 }
