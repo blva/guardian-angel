@@ -42,7 +42,7 @@ typedef enum{
 
 /* Structures and variables */
 volatile uint8_t flag;
-int maxSpeed = 100;
+int maxSpeed = 70;
 int speed = 0;
 float adc_to_speed_cvalue; 
 
@@ -170,9 +170,11 @@ static THD_FUNCTION(Thread1, arg) {
   }
 }
 
-void st_machine(adcsample_t *bufferADC) {
+void st_machine(void) {
   uint16_t adc_value = 0;
   int ret;
+
+  //TODO: add bus break threatment to identify if bus has stopped again!
 
   /* Starts State Machine */
   switch(state){
@@ -200,7 +202,7 @@ void st_machine(adcsample_t *bufferADC) {
       */
       
       //TODO -> add motor output
-      serial_write("Door closed, waiting for acceleration\r\n");
+      serial_write("Door closed, waiting for acceleration");
 
       ret = is_speed_above_limit(speed, 10);
       state = (ret) ? normal_state : waiting_acceleration;
@@ -214,7 +216,10 @@ void st_machine(adcsample_t *bufferADC) {
         - If the speed ultrapass the limit go to another state
         - Print on serial "Bus Normal State"
       */
-      serial_write("Bus Normal State\r\n");
+
+      serial_write("Bus Normal State");
+      ret = is_speed_above_limit(speed, maxSpeed);
+      state = (ret) ? overspeed_alert : normal_state;
      // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
 
       break;
@@ -226,7 +231,7 @@ void st_machine(adcsample_t *bufferADC) {
       */
 
       /* Check wether rain is over or just started! */
-      serial_write("Warning! - It is Ranning\r\n");    
+      serial_write("Warning! - It is Ranning");    
       /* Setting new speed limit */
       // setMaxSpeed(80);
       /* Go back to normal state */ 
@@ -239,8 +244,10 @@ void st_machine(adcsample_t *bufferADC) {
         - Print on serial "Warning! - Overspeed"
         - Only leave state after overspeed
       */
-      serial_write("Warning! - Overspeed\r\n");
+      serial_write("Warning! - Overspeed");
       // buzzer_output(1); // 
+      ret = is_speed_above_limit(speed, maxSpeed);
+      state = (ret) ? overspeed_alert : normal_state;
       break;  
     default:
       state = bus_stopped;
@@ -285,7 +292,7 @@ int main(void) {
     /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
     /* Run state machine */
-    st_machine(bufferADC);
+    st_machine();
     /* Sleep time of the "main" thread */
     chThdSleepMilliseconds(3000);
   }
