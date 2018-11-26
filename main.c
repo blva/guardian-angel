@@ -11,6 +11,9 @@
 #include <stdlib.h>
 #include <chprintf.h>
 
+/* Debug Flags */
+#define DEBUG 1
+
 /* Definition of input ports */
 #define RAIN_PORT 2 //PD2
 #define DOOR_PORT 3 //PD3
@@ -73,7 +76,9 @@ int forward_door_command(int command) {
 }
 
 void serial_write(void *data) {
-  chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
+  if (DEBUG) {
+    chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
+  }
 }
 
 /* Callback functions */
@@ -106,12 +111,13 @@ uint64_t get_adc_conversion(adcsample_t *bufferADC) {
   return number;
 }
 
-int get_speed(uint16_t adcValue) {
+void get_speed(uint16_t adcValue) {
   char buffer [sizeof(uint16_t)*8+1];
   uint16_t number = (adcValue) * (adc_to_speed_cvalue);
   ltoa(number, buffer, 10);
+  serial_write("read speed:");
   serial_write(buffer);
-  return adcValue*adc_to_speed_cvalue;
+  speed = adcValue*adc_to_speed_cvalue;
 }
 
 void setMaxSpeed(int speed){
@@ -179,16 +185,15 @@ int is_speed_above_limit(int speed, int limit) {
 static THD_WORKING_AREA(waThread1, 32);
 static THD_FUNCTION(Thread1, arg) {
   (void)arg;
-  chRegSetThreadName("read-high-priority-sensors");
-  while (true) {
-    /* Read velocity speed */
-      //This will determine wether the bus has stoped or not. 
-      //Do analog reading here
+  chRegSetThreadName("read-speed-thread");
+  uint16_t adc_value;
 
-    /* Read Door sensor */
-    // palReadPad(IOPORT4, RAIN_PORT) == PAL_HIGH ? serial_write("High!\r\n") : serial_write("Low!\r\n");
-    //chnWrite(&SD1, (const uint8_t *)buffer, strlen(buffer));
-    chThdSleepMilliseconds(5000);
+  while (true) {
+    if (got_adc) {
+      adc_value = get_adc_conversion(arg);
+      get_speed(adc_value);
+    }
+    chThdSleepMilliseconds(1000);
   }
 }
 
@@ -224,11 +229,7 @@ void st_machine(adcsample_t *bufferADC) {
       //TODO -> add motor output
       serial_write("Door closed, waiting for acceleration\r\n");
 
-      if (got_adc) {
-        adc_value = get_adc_conversion(bufferADC);
-      }
-
-      ret = is_speed_above_limit(get_speed(adc_value), 10);
+      ret = is_speed_above_limit(speed, 10);
       state = (ret) ? normal_state : waiting_acceleration;
 
       break;
@@ -303,7 +304,7 @@ int main(void) {
   /*
    * Starts the reading sensors thread.
    */
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
+  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, &bufferADC);
 
   state = bus_stopped; // state default
   doorOpened = true;
