@@ -8,6 +8,7 @@
 #include <hal.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <chprintf.h>
 
 /* Definition of input ports */
@@ -99,14 +100,17 @@ void overSpeed_cb(void){
 
 /* Aux Functions */
 
-uint64_t get_adc_convertion(adcsample_t *bufferADC) {
+uint64_t get_adc_conversion(adcsample_t *bufferADC) {
   uint16_t number = ADC_CONVERTER_FACTOR * bufferADC[0];
   got_adc = 0;
   return number;
 }
 
-int getSpeed(uint16_t adcValue){
+int get_speed(uint16_t adcValue) {
+  char buffer [sizeof(uint16_t)*8+1];
   uint16_t number = (adcValue) * (adc_to_speed_cvalue);
+  ltoa(number, buffer, 10);
+  serial_write(buffer);
   return adcValue*adc_to_speed_cvalue;
 }
 
@@ -221,11 +225,11 @@ void st_machine(adcsample_t *bufferADC) {
       serial_write("Door closed, waiting for acceleration\r\n");
 
       if (got_adc) {
-        adc_value = get_adc_convertion(bufferADC);
+        adc_value = get_adc_conversion(bufferADC);
       }
 
-      //ret = is_speed_above_limit(getSpeed(adc_value), 10);
-      // state = (ret) ? normal_state : waiting_acceleration;
+      ret = is_speed_above_limit(get_speed(adc_value), 10);
+      state = (ret) ? normal_state : waiting_acceleration;
 
       break;
     case normal_state:
@@ -237,7 +241,7 @@ void st_machine(adcsample_t *bufferADC) {
         - Print on serial "Bus Normal State"
       */
       serial_write("Bus Normal State\r\n");
-     // motor_output(speed2DutyCycle(getSpeed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+     // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
 
       break;
     case rain_alert:
