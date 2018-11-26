@@ -146,11 +146,9 @@ void buzzer_output(int state){
 
 /* Threads */
 
- // FIXME: Study the possibility to create a thread for each sensor event
 
 /* Thread for reading sensors.
  * Read primary sensors:
- * 1. (HP) Velocity speed. -> check speed and speed limit and then activate or not buzzer.
  * 2. (HP) Door sensor. -> check door sensor and if it is opened it is not possible to speed the bus.
  * 3. Rain sensor. -> check raining sensor and reduces limit speed.
  * 4. Ultrasonic sensor -> check ???
@@ -184,13 +182,17 @@ void st_machine(void) {
         - Print on serial "Bus Stopped - Door is Open"
         - Do not allow the motor to run
       */
-      serial_write("Bus Stopped - Waiting for closed door\r\n");
-      //motor_output(0); // Turning off the motor
-      //buzzer_output(0); //
-      
-      //FIXME: Delete me after
-      state = waiting_acceleration;
-      //
+      serial_write("Bus Stopped - Waiting for closed door");
+
+      if (!doorOpened) {
+        state = waiting_acceleration;
+      }
+      else {
+        /* If door is opened, keep the bus stoped */
+        //motor_output(0); // Turning off the motor
+        //buzzer_output(0); //
+        serial_write("Please close the door!");
+      }
       break;
     case waiting_acceleration:
       /* Functionalities:
@@ -201,12 +203,10 @@ void st_machine(void) {
         - Print on serial "Door closed, waiting for acceleration"
       */
       
-      //TODO -> add motor output
       serial_write("Door closed, waiting for acceleration");
 
       ret = is_speed_above_limit(speed, 10);
       state = (ret) ? normal_state : waiting_acceleration;
-
       break;
     case normal_state:
       /* Functionalities:
@@ -217,10 +217,11 @@ void st_machine(void) {
         - Print on serial "Bus Normal State"
       */
 
+     // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
+
       serial_write("Bus Normal State");
       ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
-     // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
 
       break;
     case rain_alert:
@@ -285,8 +286,8 @@ int main(void) {
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, &bufferADC);
 
-  state = bus_stopped; // state default
-  doorOpened = true;
+  state = bus_stopped; /* Init state */
+  doorOpened = false;
 
   while(TRUE) {
     /* Start ADC conversion */
