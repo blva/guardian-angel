@@ -27,8 +27,7 @@
 /* ADC ports */
 #define NBR_CHANNELS 1
 #define DEPTH 5
-#define ADC_CONVERTER_FACTOR 0.00477922077922078 // ((2,5*1.0552519480519482)/552)
-
+#define ADC_CONVERTER_FACTOR 0.19116883116883118 // ((100*1.0552519480519482)/552)
 
 // State Machine
 typedef enum{
@@ -42,7 +41,7 @@ typedef enum{
 
 /* Structures and variables */
 volatile uint8_t flag;
-int maxSpeed = 70;
+int maxSpeed = 100;
 int speed = 0;
 float adc_to_speed_cvalue; 
 
@@ -62,12 +61,13 @@ void initPorts(void) {
   palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
   palSetPadMode(IOPORT2, MOTOR_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
 
+  palWritePad(IOPORT4,BUZZER_PORT,0);
 }
 
-int forward_door_command(int command) {
+void forward_door_command(int command) {
   /* This function forwards the door command to the bus, otherwise, the door is not opened */
   bool door_opened = command;
-  return 1;
+  // return 1;
 }
 
 void serial_write(void *data) {
@@ -112,11 +112,17 @@ void setMaxSpeed(int speed){
 }
 
 float speed2DutyCycle(int speed){
-  // FIXME: Implement this methode
-  return 0.5;
+  /* README 
+      speed             duty cycle
+       100   -----------   100%
+       20    -----------    1%
+   inputSpeed ---------- outputDutyCycle
+
+    outputDutyCycle =  inputSpeed/20
+
+  */ 
+  return speed/20;
 }
-
-
 
 void motor_output(float dutyCycle){
   int step = 6;
@@ -124,19 +130,26 @@ void motor_output(float dutyCycle){
 
   // TODO: Print the Duty Cycle
   // serial_write("Pwm! \r\n");
-  pwmEnableChannel(&PWMD1, 1, width);
-  width += step;
+  pwmEnableChannel(&PWMD1, 1, dutyCycle);
+  /*
+    width += step;
   if ((width >= 0x3FF) || (width < 10)) {
       width -= step;
       step = -step;
-  }
+  }  
+  */
+  
 }
 
 void buzzer_output(int state){
     switch (state){
         case 0: // Opened door
+            palTogglePad(IOPORT4, BUZZER_PORT);
+            chThdSleepMilliseconds(500);
             break;
-        case 1: // Raining
+        case 1: // Over Speed
+            palTogglePad(IOPORT4, BUZZER_PORT);
+            chThdSleepMilliseconds(100);
             break;
     }
 
@@ -153,8 +166,9 @@ void buzzer_output(int state){
  * 3. Rain sensor. -> check raining sensor and reduces limit speed.
  * 4. Ultrasonic sensor -> check ???
  */
-static THD_WORKING_AREA(waThread1, 32);
-static THD_FUNCTION(Thread1, arg) {
+// ADC Thread
+static THD_WORKING_AREA(waReadSpeed, 32);
+static THD_FUNCTION(readSpeed, arg) {
   (void)arg;
   chRegSetThreadName("read-speed-thread");
   uint16_t adc_value;
@@ -167,6 +181,48 @@ static THD_FUNCTION(Thread1, arg) {
     chThdSleepMilliseconds(1000);
   }
 }
+// Raining Thread
+static THD_WORKING_AREA(waRaining, 32);
+static THD_FUNCTION(raining, arg) {
+  (void)arg;
+  chRegSetThreadName("Raning");
+  uint16_t adc_value;
+
+  while (true) {
+    // Read Button port
+    if (palReadPad(IOPORT4,RAIN_PORT)){
+      //High State
+      setMaxSpeed(80);
+      state = rain_alert;
+    }else{
+      // Low State
+      setMaxSpeed(100);
+    }
+
+    chThdSleepMilliseconds(1000);
+  }
+}
+// Opening Door Thread
+static THD_WORKING_AREA(waOpeningDoor, 32);
+static THD_FUNCTION(openingDoor, arg) {
+  (void)arg;
+  chRegSetThreadName("Opening Door");
+
+  while (true) {
+    // Read Button port
+    if (palReadPad(IOPORT4,DOOR_PORT)){
+      //High State
+      doorOpened = true;
+    }else{
+      // Low State
+      doorOpened = false;
+    }
+
+    chThdSleepMilliseconds(1000);
+  }
+}
+
+
 
 void st_machine(void) {
   uint16_t adc_value = 0;
@@ -190,7 +246,7 @@ void st_machine(void) {
       else {
         /* If door is opened, keep the bus stoped */
         //motor_output(0); // Turning off the motor
-        //buzzer_output(0); //
+        buzzer_output(0); //
         serial_write("Please close the door!");
       }
       break;
@@ -205,7 +261,7 @@ void st_machine(void) {
       
       serial_write("Door closed, waiting for acceleration");
 
-      ret = is_speed_above_limit(speed, 10);
+      ret = is_speed_above_limit(speed, 25);
       state = (ret) ? normal_state : waiting_acceleration;
       break;
     case normal_state:
@@ -218,8 +274,9 @@ void st_machine(void) {
       */
 
      // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
-
+      palWritePad(IOPORT4,BUZZER_PORT,0);
       serial_write("Bus Normal State");
+      motor_output(speed2DutyCycle(speed));
       ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
 
@@ -233,8 +290,7 @@ void st_machine(void) {
 
       /* Check wether rain is over or just started! */
       serial_write("Warning! - It is Ranning");    
-      /* Setting new speed limit */
-      // setMaxSpeed(80);
+      
       /* Go back to normal state */ 
       state = normal_state;
       break;
@@ -246,7 +302,7 @@ void st_machine(void) {
         - Only leave state after overspeed
       */
       serial_write("Warning! - Overspeed");
-      // buzzer_output(1); // 
+      buzzer_output(1); 
       ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
       break;  
@@ -260,7 +316,7 @@ int main(void) {
 
   /* PWM Config */
   static PWMConfig pwmcfg = {
-          0, 0x3FF, 0,
+          15625, 0x3FF, 0,
           {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
   };
 
@@ -284,8 +340,9 @@ int main(void) {
   /*
    * Starts the reading sensors thread.
    */
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, &bufferADC);
-
+  chThdCreateStatic(waReadSpeed, sizeof(waReadSpeed), NORMALPRIO, readSpeed, &bufferADC);
+  // chThdCreateStatic(waRaining, sizeof(waRaining), NORMALPRIO, raining, NULL);
+  // chThdCreateStatic(waOpeningDoor, sizeof(waOpeningDoor), NORMALPRIO, openingDoor, NULL);
   state = bus_stopped; /* Init state */
   doorOpened = false;
 
@@ -295,6 +352,6 @@ int main(void) {
     /* Run state machine */
     st_machine();
     /* Sleep time of the "main" thread */
-    chThdSleepMilliseconds(3000);
+    chThdSleepMilliseconds(2000);
   }
 }
