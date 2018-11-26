@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <chprintf.h>
+#include "speed.h"
 
 /* Debug Flags */
 #define DEBUG 1
@@ -27,13 +28,7 @@
 #define NBR_CHANNELS 1
 #define DEPTH 5
 #define ADC_CONVERTER_FACTOR 0.00477922077922078 // ((2,5*1.0552519480519482)/552)
-#define MAXIMUM_VOLTAGE 5
-#define MINIMUM_VOLTAGE 0.5
-#define BUS_MAXIMUM_SUPPORTED_SPEED 100 /* Bus speed in km/h */
 
-float get_adc_convert_value(void) {
-  return BUS_MAXIMUM_SUPPORTED_SPEED/(MAXIMUM_VOLTAGE - MINIMUM_VOLTAGE);
-}
 
 // State Machine
 typedef enum{
@@ -111,14 +106,6 @@ uint64_t get_adc_conversion(adcsample_t *bufferADC) {
   return number;
 }
 
-void get_speed(uint16_t adcValue) {
-  char buffer [sizeof(uint16_t)*8+1];
-  uint16_t number = (adcValue) * (adc_to_speed_cvalue);
-  ltoa(number, buffer, 10);
-  serial_write("read speed:");
-  serial_write(buffer);
-  speed = adcValue*adc_to_speed_cvalue;
-}
 
 void setMaxSpeed(int speed){
     maxSpeed = speed;
@@ -155,21 +142,7 @@ void buzzer_output(int state){
 
 }
 
-/**
- * @brief   Identifies wether speed is above limit ot not.
- *
- * @param[in] speed    Integer to indicate speed value
- * @param[in] limit    Integer to indicate limit to compair
- * @return  Null if speed is NOT above limit and 1 if speed is above limit
- */
-int is_speed_above_limit(int speed, int limit) {
-  int ret = 1;
-  if (speed <= limit) {
-    ret = 0;
-  }
 
-  return ret;
-}
 
 /* Threads */
 
@@ -191,7 +164,7 @@ static THD_FUNCTION(Thread1, arg) {
   while (true) {
     if (got_adc) {
       adc_value = get_adc_conversion(arg);
-      get_speed(adc_value);
+      speed = get_speed(adc_value);
     }
     chThdSleepMilliseconds(1000);
   }
@@ -299,7 +272,6 @@ int main(void) {
   serial_write("Guardian Angel \r\n");
 
   adcStart(&ADCD1, &cfg);
-  adc_to_speed_cvalue = get_adc_convert_value();
 
   /*
    * Starts the reading sensors thread.

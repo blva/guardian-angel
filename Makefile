@@ -101,6 +101,7 @@ CSRC =  $(KERNSRC)                      \
         $(BOARDSRC)                     \
         $(CHIBIOS)/os/various/evtimer.c \
 	$(CHIBIOS)/os/hal/lib/streams/chprintf.c\
+	speed.c \
 	main.c
 
 # List C++ sources file here.
