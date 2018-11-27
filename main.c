@@ -42,8 +42,9 @@ typedef enum{
 /* Structures and variables */
 volatile uint8_t flag;
 int rainFlag = 0;
-int maxSpeed = 100;
+int maxSpeed = 80;
 int speed = 0;
+int init_flag = 0;
 float adc_to_speed_cvalue; 
 
 bool isRanning;
@@ -96,15 +97,15 @@ static void rainButton_cb(EXTDriver *extp, expchannel_t channel){
 
   chSysLockFromISR();  
   
-  
-  // if (maxSpeed == 100){
-  //   rainFlag = 1;
-  // }else{
-  //   rainFlag = 0;
-  // }
+  serial_write("interrupt!");
+
+  if (maxSpeed == 100){
+    rainFlag = 1;
+  }else{
+    rainFlag = 0;
+  }
   state = rain_alert;
   chSysUnlockFromISR();
-  
 }
 
 void overSpeed_cb(void){
@@ -135,15 +136,17 @@ float speed2DutyCycle(int speed){
     outputDutyCycle =  inputSpeed/20
 
   */ 
-  return speed*500;
+ return speed * 100;
 }
 
 void motor_output(float dutyCycle){
   // int step = 6;
   // int width = step;
   // TODO: Print the Duty Cycle
-  // serial_write("Pwm! \r\n");
-  pwmEnableChannel(&PWMD1, 1, PWM_PERCENTAGE_TO_WIDTH(&PWMD1, dutyCycle));
+  char buffer[10];
+  ltoa(dutyCycle, buffer, 10);
+  serial_write(buffer);
+  pwmEnableChannel(&PWMD1, 0, PWM_PERCENTAGE_TO_WIDTH(&PWMD1, dutyCycle));
   /*
     width += step;
   if ((width >= 0x3FF) || (width < 10)) {
@@ -246,7 +249,7 @@ void st_machine(void) {
      // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
       palWritePad(IOPORT4,BUZZER_PORT,0);
       serial_write("Bus Normal State");
-      // motor_output(speed2DutyCycle(speed));
+      motor_output(speed2DutyCycle(speed));
       ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
       if (rainFlag){
@@ -264,7 +267,7 @@ void st_machine(void) {
       serial_write("Warning! - It is Ranning");    
       // chThdSleepMilliseconds(1000);
       /* Go back to normal state */ 
-      setMaxSpeed(80);
+      //setMaxSpeed(80);
       break;
 
     case overspeed_alert:
@@ -289,12 +292,12 @@ int main(void) {
   /* PWM Config */
   static PWMConfig pwmcfg = {
           15625, 0x3FF, 0,
-          {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
+          {{PWM_OUTPUT_ACTIVE_HIGH, 0}, {PWM_OUTPUT_DISABLED, 0}}
   };
 
   static const EXTConfig extcfg = {
     {
-      {EXT_CH_MODE_DISABLED , rainButton_cb},      /* INT0 Config. */
+      {EXT_CH_MODE_FALLING_EDGE , rainButton_cb},      /* INT0 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT1 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT2 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT3 Config. */
@@ -311,7 +314,6 @@ int main(void) {
   chSysInit();
   initPorts();
 
-
   pwmStart(&PWMD1, &pwmcfg);
   sdStart(&SD1, NULL);
 
@@ -319,9 +321,13 @@ int main(void) {
   extStart(&EXTD1, &extcfg);
   extChannelEnable(&EXTD1, INT0); // PD2 (4)
 
-  serial_write("Guardian Angel \r\n");
+  serial_write("Guardian Angel");
+
 
   adcStart(&ADCD1, &cfg);
+
+ // palClearPad(IOPORT4, RAIN_PORT);
+
 
   /*
    * Starts the reading sensors thread.
@@ -332,6 +338,8 @@ int main(void) {
   state = bus_stopped; /* Init state */
   doorOpened = false;
   palWritePad(IOPORT4,BUZZER_PORT,0);
+
+initialized:
   while(TRUE) {
     /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);

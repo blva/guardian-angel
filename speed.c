@@ -12,7 +12,7 @@
 
 int get_speed(uint16_t adc_value) {
   char buffer [sizeof(uint16_t)*8+1];
-  uint16_t number = (adc_value) * (ADC_TO_SPEED_CONV_VALUE);
+  uint16_t number = (adc_value);
   ltoa(number, buffer, 10);
   serial_write("speed:");
   serial_write(buffer);

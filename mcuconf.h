@@ -43,7 +43,7 @@
 /*
  * PCINT driver system settings.
  */
-#define AVR_EXT_USE_PCINT0                 TRUE
+#define AVR_EXT_USE_PCINT0                 FALSE
 #define AVR_EXT_USE_PCINT1                 FALSE
 #define AVR_EXT_USE_PCINT2                 FALSE
 #define AVR_EXT_USE_PCINT3                 FALSE
