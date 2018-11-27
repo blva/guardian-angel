@@ -33,7 +33,7 @@
 /*
  * EXT drivers system settings.
  */
-#define AVR_EXT_USE_INT0                   FALSE
+#define AVR_EXT_USE_INT0                   TRUE
 #define AVR_EXT_USE_INT1                   FALSE
 #define AVR_EXT_USE_INT2                   FALSE
 #define AVR_EXT_USE_INT3                   FALSE
@@ -43,7 +43,7 @@
 /*
  * PCINT driver system settings.
  */
-#define AVR_EXT_USE_PCINT0                 FALSE
+#define AVR_EXT_USE_PCINT0                 TRUE
 #define AVR_EXT_USE_PCINT1                 FALSE
 #define AVR_EXT_USE_PCINT2                 FALSE
 #define AVR_EXT_USE_PCINT3                 FALSE

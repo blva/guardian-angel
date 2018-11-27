@@ -61,7 +61,7 @@ void initPorts(void) {
   palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
   palSetPadMode(IOPORT2, MOTOR_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
 
-  palWritePad(IOPORT4,BUZZER_PORT,0);
+  
 }
 
 void forward_door_command(int command) {
@@ -89,8 +89,17 @@ void doorOpened_cb(void){
 
 
 //  ********* Threads *********
-void rainButton_cb(void){
+static void rainButton_cb(EXTDriver *extp, expchannel_t channel){
+  (void)extp;
+  (void)channel;
+  chSysLockFromISR();  
+  
+  setMaxSpeed(80);
+  // serial_write("80km/h");
   state = rain_alert;
+  
+  chSysUnlockFromISR();
+  
 }
 
 void overSpeed_cb(void){
@@ -221,6 +230,27 @@ static THD_FUNCTION(openingDoor, arg) {
     chThdSleepMilliseconds(1000);
   }
 }
+// Raining Interruption
+CH_IRQ_HANDLER(myIRQ) {
+  CH_IRQ_PROLOGUE();
+ 
+  /* IRQ handling code, preemptable if the architecture supports it.*/
+  if (palReadPad(IOPORT4,RAIN_PORT)){
+        //High State
+        setMaxSpeed(80);
+        state = rain_alert;
+      }else{
+        // Low State
+        setMaxSpeed(100);
+  }
+  chSysLockFromISR();
+  /* Invocation of some I-Class system APIs, never preemptable.*/
+  chSysUnlockFromISR();
+ 
+  /* More IRQ handling code, again preemptable.*/
+ 
+  CH_IRQ_EPILOGUE();
+}
 
 
 
@@ -258,7 +288,6 @@ void st_machine(void) {
         - If door is opened, goes back to bus_stopped
         - Print on serial "Door closed, waiting for acceleration"
       */
-      
       serial_write("Door closed, waiting for acceleration");
 
       ret = is_speed_above_limit(speed, 25);
@@ -290,7 +319,7 @@ void st_machine(void) {
 
       /* Check wether rain is over or just started! */
       serial_write("Warning! - It is Ranning");    
-      
+      chThdSleepMilliseconds(50);
       /* Go back to normal state */ 
       state = normal_state;
       break;
@@ -320,6 +349,16 @@ int main(void) {
           {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
   };
 
+  static const EXTConfig extcfg = {
+    {
+      {EXT_CH_MODE_DISABLED , rainButton_cb},      /* INT0 Config. */
+      {EXT_CH_MODE_DISABLED , NULL},      /* INT1 Config. */
+      {EXT_CH_MODE_DISABLED , NULL},      /* INT2 Config. */
+      {EXT_CH_MODE_DISABLED , NULL},      /* INT3 Config. */
+      {EXT_CH_MODE_RISING_EDGE , NULL},  /* INT4 Config. */
+      {EXT_CH_MODE_DISABLED , NULL},      /* INT5 Config. */
+    }
+  };
   /* ADC Config */
   ADCConfig cfg = {ANALOG_REFERENCE_AVCC};
   ADCConversionGroup group = {0, NBR_CHANNELS, adc_cb, 0x7};
@@ -333,6 +372,10 @@ int main(void) {
   pwmStart(&PWMD1, &pwmcfg);
   sdStart(&SD1, NULL);
 
+
+  extStart(&EXTD1, &extcfg);
+  extChannelEnable(&EXTD1, INT0); // PD2 (4)
+
   serial_write("Guardian Angel \r\n");
 
   adcStart(&ADCD1, &cfg);
@@ -345,7 +388,8 @@ int main(void) {
   // chThdCreateStatic(waOpeningDoor, sizeof(waOpeningDoor), NORMALPRIO, openingDoor, NULL);
   state = bus_stopped; /* Init state */
   doorOpened = false;
-
+  palWritePad(IOPORT4,BUZZER_PORT,0);
+  palWritePad(IOPORT4,RAIN_PORT,0);
   while(TRUE) {
     /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
