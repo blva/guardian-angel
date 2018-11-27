@@ -41,6 +41,7 @@ typedef enum{
 
 /* Structures and variables */
 volatile uint8_t flag;
+int rainFlag = 0;
 int maxSpeed = 100;
 int speed = 0;
 float adc_to_speed_cvalue; 
@@ -55,7 +56,7 @@ states state;
 void initPorts(void) {
 
   /* Initialize input ports */
-  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
+  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT_PULLUP);
   palSetPadMode(IOPORT4, DOOR_PORT, PAL_MODE_INPUT);
   /* Initialize output ports */
   palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
@@ -88,16 +89,20 @@ void doorOpened_cb(void){
 }
 
 
-//  ********* Threads *********
+//  ********* Interruptions *********
 static void rainButton_cb(EXTDriver *extp, expchannel_t channel){
   (void)extp;
   (void)channel;
+
   chSysLockFromISR();  
   
-  setMaxSpeed(80);
-  // serial_write("80km/h");
-  state = rain_alert;
   
+  // if (maxSpeed == 100){
+  //   rainFlag = 1;
+  // }else{
+  //   rainFlag = 0;
+  // }
+  state = rain_alert;
   chSysUnlockFromISR();
   
 }
@@ -130,16 +135,15 @@ float speed2DutyCycle(int speed){
     outputDutyCycle =  inputSpeed/20
 
   */ 
-  return speed/20;
+  return speed*500;
 }
 
 void motor_output(float dutyCycle){
-  int step = 6;
-  int width = step;
-
+  // int step = 6;
+  // int width = step;
   // TODO: Print the Duty Cycle
   // serial_write("Pwm! \r\n");
-  pwmEnableChannel(&PWMD1, 1, dutyCycle);
+  pwmEnableChannel(&PWMD1, 1, PWM_PERCENTAGE_TO_WIDTH(&PWMD1, dutyCycle));
   /*
     width += step;
   if ((width >= 0x3FF) || (width < 10)) {
@@ -190,69 +194,6 @@ static THD_FUNCTION(readSpeed, arg) {
     chThdSleepMilliseconds(1000);
   }
 }
-// Raining Thread
-static THD_WORKING_AREA(waRaining, 32);
-static THD_FUNCTION(raining, arg) {
-  (void)arg;
-  chRegSetThreadName("Raning");
-  uint16_t adc_value;
-
-  while (true) {
-    // Read Button port
-    if (palReadPad(IOPORT4,RAIN_PORT)){
-      //High State
-      setMaxSpeed(80);
-      state = rain_alert;
-    }else{
-      // Low State
-      setMaxSpeed(100);
-    }
-
-    chThdSleepMilliseconds(1000);
-  }
-}
-// Opening Door Thread
-static THD_WORKING_AREA(waOpeningDoor, 32);
-static THD_FUNCTION(openingDoor, arg) {
-  (void)arg;
-  chRegSetThreadName("Opening Door");
-
-  while (true) {
-    // Read Button port
-    if (palReadPad(IOPORT4,DOOR_PORT)){
-      //High State
-      doorOpened = true;
-    }else{
-      // Low State
-      doorOpened = false;
-    }
-
-    chThdSleepMilliseconds(1000);
-  }
-}
-// Raining Interruption
-CH_IRQ_HANDLER(myIRQ) {
-  CH_IRQ_PROLOGUE();
- 
-  /* IRQ handling code, preemptable if the architecture supports it.*/
-  if (palReadPad(IOPORT4,RAIN_PORT)){
-        //High State
-        setMaxSpeed(80);
-        state = rain_alert;
-      }else{
-        // Low State
-        setMaxSpeed(100);
-  }
-  chSysLockFromISR();
-  /* Invocation of some I-Class system APIs, never preemptable.*/
-  chSysUnlockFromISR();
- 
-  /* More IRQ handling code, again preemptable.*/
- 
-  CH_IRQ_EPILOGUE();
-}
-
-
 
 void st_machine(void) {
   uint16_t adc_value = 0;
@@ -305,10 +246,12 @@ void st_machine(void) {
      // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
       palWritePad(IOPORT4,BUZZER_PORT,0);
       serial_write("Bus Normal State");
-      motor_output(speed2DutyCycle(speed));
+      // motor_output(speed2DutyCycle(speed));
       ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
-
+      if (rainFlag){
+        state = rain_alert;
+      }
       break;
     case rain_alert:
       /* Functionalities:
@@ -319,9 +262,9 @@ void st_machine(void) {
 
       /* Check wether rain is over or just started! */
       serial_write("Warning! - It is Ranning");    
-      chThdSleepMilliseconds(50);
+      // chThdSleepMilliseconds(1000);
       /* Go back to normal state */ 
-      state = normal_state;
+      setMaxSpeed(80);
       break;
 
     case overspeed_alert:
@@ -389,7 +332,6 @@ int main(void) {
   state = bus_stopped; /* Init state */
   doorOpened = false;
   palWritePad(IOPORT4,BUZZER_PORT,0);
-  palWritePad(IOPORT4,RAIN_PORT,0);
   while(TRUE) {
     /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
