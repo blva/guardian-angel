@@ -101,6 +101,7 @@ CSRC =  $(KERNSRC)                      \
         $(HALSRC)                       \
         $(PLATFORMSRC)                  \
         $(BOARDSRC)                     \
+        $(STREAMSSRC)                   \
         $(CHIBIOS)/os/various/evtimer.c \
 	$(CHIBIOS)/os/hal/lib/streams/chprintf.c\
 	speed.c \

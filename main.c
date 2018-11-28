@@ -22,7 +22,7 @@
 
 /* Definition of output ports */
 #define BUZZER_PORT 4 //PD4
-#define MOTOR_PORT 1 //IOPORT2 - PB1 = Pin 9 (PWM)
+#define MOTOR_PORT 2 //IOPORT2 - PB1 = Pin 10 (PWM)
 
 /* ADC ports */
 #define NBR_CHANNELS 1
@@ -144,9 +144,9 @@ void motor_output(float dutyCycle){
   // int width = step;
   // TODO: Print the Duty Cycle
   char buffer[10];
-  ltoa(dutyCycle, buffer, 10);
+  ltoa(PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed), buffer, 10);
   serial_write(buffer);
-  pwmEnableChannel(&PWMD1, 0, PWM_PERCENTAGE_TO_WIDTH(&PWMD1, dutyCycle));
+  pwmEnableChannel(&PWMD1, 1, PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed));
   /*
     width += step;
   if ((width >= 0x3FF) || (width < 10)) {
@@ -194,7 +194,7 @@ static THD_FUNCTION(readSpeed, arg) {
       adc_value = get_adc_conversion(arg);
       speed = get_speed(adc_value);
     }
-    chThdSleepMilliseconds(1000);
+    chThdSleepMilliseconds(200);
   }
 }
 
@@ -291,8 +291,8 @@ int main(void) {
 
   /* PWM Config */
   static PWMConfig pwmcfg = {
-          15625, 0x3FF, 0,
-          {{PWM_OUTPUT_ACTIVE_HIGH, 0}, {PWM_OUTPUT_DISABLED, 0}}
+          0, 0xFF, 0,
+          {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
   };
 
   static const EXTConfig extcfg = {
@@ -346,6 +346,6 @@ initialized:
     /* Run state machine */
     st_machine();
     /* Sleep time of the "main" thread */
-    chThdSleepMilliseconds(2000);
+    chThdSleepMilliseconds(200);
   }
 }
