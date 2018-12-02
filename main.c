@@ -4,12 +4,12 @@
  *          Geraldo Braz
  **/
 
-#include <ch.h>
-#include <hal.h>
+#include "ch.h"
+#include "hal.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <chprintf.h>
+#include "chprintf.h"
 #include "speed.h"
 
 /* Debug Flags */
@@ -29,6 +29,9 @@
 #define DEPTH 5
 #define ADC_CONVERTER_FACTOR 0.19116883116883118 // ((100*1.0552519480519482)/552)
 
+BaseSequentialStream* chp = (BaseSequentialStream*) &SD1;
+
+
 // State Machine
 typedef enum{
     bus_stopped,
@@ -42,7 +45,8 @@ typedef enum{
 /* Structures and variables */
 volatile uint8_t flag;
 int rainFlag = 0;
-int maxSpeed = 80;
+int currentMaxSpeed = 195;
+int maxSpeed = 195;
 int speed = 0;
 int init_flag = 0;
 float adc_to_speed_cvalue; 
@@ -57,7 +61,7 @@ states state;
 void initPorts(void) {
 
   /* Initialize input ports */
-  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT_PULLUP);
+  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
   palSetPadMode(IOPORT4, DOOR_PORT, PAL_MODE_INPUT);
   /* Initialize output ports */
   palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
@@ -74,7 +78,7 @@ void forward_door_command(int command) {
 
 void serial_write(void *data) {
   if (DEBUG) {
-    chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
+    chprintf(chp, "%s\n\r",data);
   }
 }
 
@@ -96,15 +100,9 @@ static void rainButton_cb(EXTDriver *extp, expchannel_t channel){
   (void)channel;
 
   chSysLockFromISR();  
-  
-  serial_write("interrupt!");
+  palTogglePad(IOPORT2, PORTB_LED1);
+  rainFlag = (currentMaxSpeed == maxSpeed) ? 1 : 0;
 
-  if (maxSpeed == 100){
-    rainFlag = 1;
-  }else{
-    rainFlag = 0;
-  }
-  state = rain_alert;
   chSysUnlockFromISR();
 }
 
@@ -258,23 +256,18 @@ void st_machine(void) {
       break;
     case rain_alert:
       /* Functionalities:
-          - Check if rain stopped or started
-          - Turn the buzzer to High
-          - Change speed limit        
+          - Update maximum speed
+          - Go back to normal state, if it is still raining,
+            then the state will be reloaded until it is over. 
       */
-
-      /* Check wether rain is over or just started! */
-      serial_write("Warning! - It is Ranning");    
-      // chThdSleepMilliseconds(1000);
-      /* Go back to normal state */ 
-      //setMaxSpeed(80);
+      serial_write("Warning! - It is Ranning, maximum speed has changed");    
+      setMaxSpeed(80);
+      state = normal_state;
       break;
-
     case overspeed_alert:
       /* Functionalities:
         - Turn the buzzer to High                  
-        - Print on serial "Warning! - Overspeed"
-        - Only leave state after overspeed
+        - Only leave state after overspeed is over
       */
       serial_write("Warning! - Overspeed");
       buzzer_output(1); 
@@ -301,8 +294,6 @@ int main(void) {
       {EXT_CH_MODE_DISABLED , NULL},      /* INT1 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT2 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT3 Config. */
-      {EXT_CH_MODE_RISING_EDGE , NULL},  /* INT4 Config. */
-      {EXT_CH_MODE_DISABLED , NULL},      /* INT5 Config. */
     }
   };
   /* ADC Config */
@@ -315,19 +306,13 @@ int main(void) {
   initPorts();
 
   pwmStart(&PWMD1, &pwmcfg);
+  adcStart(&ADCD1, &cfg);
+
   sdStart(&SD1, NULL);
-
-
   extStart(&EXTD1, &extcfg);
   extChannelEnable(&EXTD1, INT0); // PD2 (4)
 
   serial_write("Guardian Angel");
-
-
-  adcStart(&ADCD1, &cfg);
-
- // palClearPad(IOPORT4, RAIN_PORT);
-
 
   /*
    * Starts the reading sensors thread.
@@ -339,7 +324,6 @@ int main(void) {
   doorOpened = false;
   palWritePad(IOPORT4,BUZZER_PORT,0);
 
-initialized:
   while(TRUE) {
     /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);
