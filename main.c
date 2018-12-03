@@ -56,6 +56,7 @@ int doorOpened;
 bool overSpeed;
 
 states state;
+states latest_state;
 
 /*  Config */
 void initPorts(void) {
@@ -90,7 +91,9 @@ static void rainButton_cb(EXTDriver *extp, expchannel_t channel){
   chSysLockFromISR();  
   palTogglePad(IOPORT2, PORTB_LED1);
   rainFlag = (currentMaxSpeed == maxSpeed) ? 1 : 0;
-
+  if (!rainFlag) {
+    currentMaxSpeed = maxSpeed;
+  }
   chSysUnlockFromISR();
 }
 
@@ -126,20 +129,9 @@ float speed2DutyCycle(int speed){
 }
 
 void motor_output(float dutyCycle){
-  // int step = 6;
-  // int width = step;
-  // TODO: Print the Duty Cycle
   char buffer[10];
   ltoa(PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed), buffer, 10);
   pwmEnableChannel(&PWMD1, 1, PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed));
-  /*
-    width += step;
-  if ((width >= 0x3FF) || (width < 10)) {
-      width -= step;
-      step = -step;
-  }  
-  */
-  
 }
 
 void buzzer_output(int state){
@@ -194,8 +186,6 @@ static THD_FUNCTION(readSpeed, arg) {
 void st_machine(void) {
   int ret;
 
-  //TODO: add bus break threatment to identify if bus has stopped again!
-
   /* Starts State Machine */
   switch(state){
     case bus_stopped:
@@ -243,24 +233,20 @@ void st_machine(void) {
       motor_output(speed2DutyCycle(speed));
       ret = is_speed_above_limit(speed, currentMaxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
-      if (rainFlag){
+      if (rainFlag && maxSpeed == currentMaxSpeed){
         state = rain_alert;
       }
       break;
     case rain_alert:
       /* Functionalities:
           - Update maximum speed
-          - Go back to normal state, if it is still raining,
-            then the state will be reloaded until it is over. 
+          - Go back to normal state, with an updated maximum speed. 
       */
       serial_write("Warning! - It is Ranning, maximum speed has changed");    
       setMaxSpeed(80);
       motor_output(speed2DutyCycle(speed));
+      state = normal_state;
 
-      if (!rainFlag) {
-        state = normal_state;
-        setMaxSpeed(maxSpeed);
-      }
       break;
     case overspeed_alert:
       /* Functionalities:
