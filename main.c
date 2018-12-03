@@ -4,12 +4,12 @@
  *          Geraldo Braz
  **/
 
-#include <ch.h>
-#include <hal.h>
+#include "ch.h"
+#include "hal.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <chprintf.h>
+#include "chprintf.h"
 #include "speed.h"
 
 /* Debug Flags */
@@ -29,6 +29,9 @@
 #define DEPTH 5
 #define ADC_CONVERTER_FACTOR 0.19116883116883118 // ((100*1.0552519480519482)/552)
 
+BaseSequentialStream* chp = (BaseSequentialStream*) &SD1;
+
+
 // State Machine
 typedef enum{
     bus_stopped,
@@ -42,13 +45,14 @@ typedef enum{
 /* Structures and variables */
 volatile uint8_t flag;
 int rainFlag = 0;
-int maxSpeed = 80;
+int currentMaxSpeed = 195;
+int maxSpeed = 195; /* Fixed Speed */
 int speed = 0;
 int init_flag = 0;
 float adc_to_speed_cvalue; 
 
 bool isRanning;
-bool doorOpened;
+int doorOpened;
 bool overSpeed;
 
 states state;
@@ -57,7 +61,7 @@ states state;
 void initPorts(void) {
 
   /* Initialize input ports */
-  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT_PULLUP);
+  palSetPadMode(IOPORT4, RAIN_PORT, PAL_MODE_INPUT);
   palSetPadMode(IOPORT4, DOOR_PORT, PAL_MODE_INPUT);
   /* Initialize output ports */
   palSetPadMode(IOPORT4, BUZZER_PORT, PAL_MODE_OUTPUT_PUSHPULL); //open drain?
@@ -66,15 +70,9 @@ void initPorts(void) {
   
 }
 
-void forward_door_command(int command) {
-  /* This function forwards the door command to the bus, otherwise, the door is not opened */
-  bool door_opened = command;
-  // return 1;
-}
-
 void serial_write(void *data) {
   if (DEBUG) {
-    chprintf((BaseSequentialStream *)&SD1, "%s\n\r",data);
+    chprintf(chp, "%s\n\r",data);
   }
 }
 
@@ -84,27 +82,15 @@ void adc_cb(ADCDriver *adcp, adcsample_t *bufferADC, size_t n) {
   got_adc = 1;
 }
 
-// TODO: Create a interruption that checks if the door is open.
-void doorOpened_cb(void){
-  // state = waiting_acceleration;
-}
-
-
 //  ********* Interruptions *********
 static void rainButton_cb(EXTDriver *extp, expchannel_t channel){
   (void)extp;
   (void)channel;
 
   chSysLockFromISR();  
-  
-  serial_write("interrupt!");
+  palTogglePad(IOPORT2, PORTB_LED1);
+  rainFlag = (currentMaxSpeed == maxSpeed) ? 1 : 0;
 
-  if (maxSpeed == 100){
-    rainFlag = 1;
-  }else{
-    rainFlag = 0;
-  }
-  state = rain_alert;
   chSysUnlockFromISR();
 }
 
@@ -123,7 +109,7 @@ uint64_t get_adc_conversion(adcsample_t *bufferADC) {
 
 
 void setMaxSpeed(int speed){
-    maxSpeed = speed;
+    currentMaxSpeed = speed;
 }
 
 float speed2DutyCycle(int speed){
@@ -145,7 +131,6 @@ void motor_output(float dutyCycle){
   // TODO: Print the Duty Cycle
   char buffer[10];
   ltoa(PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed), buffer, 10);
-  serial_write(buffer);
   pwmEnableChannel(&PWMD1, 1, PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed));
   /*
     width += step;
@@ -171,18 +156,26 @@ void buzzer_output(int state){
 
 }
 
+/* Thread for reading door command */
+static THD_WORKING_AREA(waOpenDoorCommand, 32);
+static THD_FUNCTION(OpenDoorCommand, arg) {
+  (void)arg;
+  chRegSetThreadName("open-door-thread");
+  int door_command;
+  while (true) {
+    door_command = (palReadPad(IOPORT4,DOOR_PORT) == PAL_LOW) ? 1 : 0;
+    /* Open the door onnly if the bus has stopped! */
+    if (door_command && (state <= waiting_acceleration)) {
+      doorOpened ^= 1;
+    }
+    else if (door_command) {
+      serial_write("Door can't be opened!");
+    }
+    chThdSleepMilliseconds(500);
+  }
+}
 
-
-/* Threads */
-
-
-/* Thread for reading sensors.
- * Read primary sensors:
- * 2. (HP) Door sensor. -> check door sensor and if it is opened it is not possible to speed the bus.
- * 3. Rain sensor. -> check raining sensor and reduces limit speed.
- * 4. Ultrasonic sensor -> check ???
- */
-// ADC Thread
+/* Thread for reading open door command */
 static THD_WORKING_AREA(waReadSpeed, 32);
 static THD_FUNCTION(readSpeed, arg) {
   (void)arg;
@@ -194,12 +187,11 @@ static THD_FUNCTION(readSpeed, arg) {
       adc_value = get_adc_conversion(arg);
       speed = get_speed(adc_value);
     }
-    chThdSleepMilliseconds(200);
+    chThdSleepMilliseconds(300);
   }
 }
 
 void st_machine(void) {
-  uint16_t adc_value = 0;
   int ret;
 
   //TODO: add bus break threatment to identify if bus has stopped again!
@@ -230,10 +222,11 @@ void st_machine(void) {
         - The bus can accelerate
         - If speed ultrapass 10km/h go to normal_state
         - If door is opened, goes back to bus_stopped
-        - Print on serial "Door closed, waiting for acceleration"
       */
       serial_write("Door closed, waiting for acceleration");
-
+      if (doorOpened) {
+        state = bus_stopped;
+      }
       ret = is_speed_above_limit(speed, 25);
       state = (ret) ? normal_state : waiting_acceleration;
       break;
@@ -245,12 +238,10 @@ void st_machine(void) {
         - If the speed ultrapass the limit go to another state
         - Print on serial "Bus Normal State"
       */
-
-     // motor_output(speed2DutyCycle(get_speed(bufferADC))); // Get the analog value of the speed and converts it to duty cycle
       palWritePad(IOPORT4,BUZZER_PORT,0);
       serial_write("Bus Normal State");
       motor_output(speed2DutyCycle(speed));
-      ret = is_speed_above_limit(speed, maxSpeed);
+      ret = is_speed_above_limit(speed, currentMaxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
       if (rainFlag){
         state = rain_alert;
@@ -258,27 +249,27 @@ void st_machine(void) {
       break;
     case rain_alert:
       /* Functionalities:
-          - Check if rain stopped or started
-          - Turn the buzzer to High
-          - Change speed limit        
+          - Update maximum speed
+          - Go back to normal state, if it is still raining,
+            then the state will be reloaded until it is over. 
       */
+      serial_write("Warning! - It is Ranning, maximum speed has changed");    
+      setMaxSpeed(80);
+      motor_output(speed2DutyCycle(speed));
 
-      /* Check wether rain is over or just started! */
-      serial_write("Warning! - It is Ranning");    
-      // chThdSleepMilliseconds(1000);
-      /* Go back to normal state */ 
-      //setMaxSpeed(80);
+      if (!rainFlag) {
+        state = normal_state;
+        setMaxSpeed(maxSpeed);
+      }
       break;
-
     case overspeed_alert:
       /* Functionalities:
         - Turn the buzzer to High                  
-        - Print on serial "Warning! - Overspeed"
-        - Only leave state after overspeed
+        - Only leave state after overspeed is over
       */
       serial_write("Warning! - Overspeed");
       buzzer_output(1); 
-      ret = is_speed_above_limit(speed, maxSpeed);
+      ret = is_speed_above_limit(speed, currentMaxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
       break;  
     default:
@@ -295,51 +286,44 @@ int main(void) {
           {{PWM_OUTPUT_DISABLED, 0}, {PWM_OUTPUT_ACTIVE_HIGH, 0}}
   };
 
+  /* Interruption Config */
   static const EXTConfig extcfg = {
     {
       {EXT_CH_MODE_FALLING_EDGE , rainButton_cb},      /* INT0 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT1 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT2 Config. */
       {EXT_CH_MODE_DISABLED , NULL},      /* INT3 Config. */
-      {EXT_CH_MODE_RISING_EDGE , NULL},  /* INT4 Config. */
-      {EXT_CH_MODE_DISABLED , NULL},      /* INT5 Config. */
     }
   };
+
   /* ADC Config */
   ADCConfig cfg = {ANALOG_REFERENCE_AVCC};
   ADCConversionGroup group = {0, NBR_CHANNELS, adc_cb, 0x7};
   adcsample_t bufferADC[DEPTH*NBR_CHANNELS];
-
   halInit();
   chSysInit();
   initPorts();
 
+  /* Start peripherals */
   pwmStart(&PWMD1, &pwmcfg);
+  adcStart(&ADCD1, &cfg);
   sdStart(&SD1, NULL);
-
-
   extStart(&EXTD1, &extcfg);
   extChannelEnable(&EXTD1, INT0); // PD2 (4)
 
   serial_write("Guardian Angel");
 
-
-  adcStart(&ADCD1, &cfg);
-
- // palClearPad(IOPORT4, RAIN_PORT);
-
-
-  /*
-   * Starts the reading sensors thread.
-   */
+  /* Initialize Threads */
   chThdCreateStatic(waReadSpeed, sizeof(waReadSpeed), NORMALPRIO, readSpeed, &bufferADC);
-  // chThdCreateStatic(waRaining, sizeof(waRaining), NORMALPRIO, raining, NULL);
-  // chThdCreateStatic(waOpeningDoor, sizeof(waOpeningDoor), NORMALPRIO, openingDoor, NULL);
-  state = bus_stopped; /* Init state */
-  doorOpened = false;
-  palWritePad(IOPORT4,BUZZER_PORT,0);
+  chThdCreateStatic(waOpenDoorCommand, sizeof(waOpenDoorCommand), NORMALPRIO, OpenDoorCommand, NULL);
 
-initialized:
+  /* Init state */
+  state = bus_stopped;
+  doorOpened = 1; /* Door starts closed */
+
+  palWritePad(IOPORT4,BUZZER_PORT,0);
+  palWritePad(IOPORT2,MOTOR_PORT,0);
+
   while(TRUE) {
     /* Start ADC conversion */
     adcStartConversion(&ADCD1, &group, bufferADC, DEPTH);

@@ -315,4 +315,10 @@ endif
 # End of programming rules.
 ##############################################################################
 
+#Add ChibiOS path:
+install: $()
+		@echo Installing ChibiOS...
+		$ git clone "https://github.com/ChibiOS/ChibiOS.git"
+		@echo Done!
+
 # EOF
