@@ -255,6 +255,8 @@ void st_machine(void) {
       */
       serial_write("Warning! - It is Ranning, maximum speed has changed");    
       setMaxSpeed(80);
+      motor_output(speed2DutyCycle(speed));
+
       if (!rainFlag) {
         state = normal_state;
         setMaxSpeed(maxSpeed);
