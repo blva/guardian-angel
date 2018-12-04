@@ -6,16 +6,24 @@ This work is a project developed by @blva and @geraldobraz applying the techniqu
 
 ## What is it?
 
-Guardian Angel is a well known concept used to make buses safer. We developed this using ChibiOS as an RTOS and Arduino Uno as our platform.
+Guardian Angel is a well known concept used to make buses safer. We developed this using ChibiOS as an RTOS and Arduino Uno as our platform. 
 
+The application has been developed to demonstrate the working of a guardian angel system for buses. The project is composed by the following components:
 
-## Requirements
-
-* GCC
+* GCC Compiler
 * Arduino UNO
 * Buttons
 * DC motor
 * Buzzers
+* TIP Transistor
+* Resistors
+* Potenciometer
+
+The system is responsible for safe critical verifications in order to make the bus vehicle safer. This periodically checks the bus velocity and state, guaranteeing that the bus door will not be opened unless the bus is not on movement and that if the bus is on overspeed state a warning will be enabled. Rain detection is another feature, it is responsible for verifying whether is raining or not and if so, the system should warn the driver and reduce the maximum speed limit. 
+
+The usage of an RTOS is important with the usage of threads and interruptions in order to cover all the possible occurrences and guarantee the correct treatment.
+
+## Specifications
 
 ## How to run?
 
