@@ -16,8 +16,8 @@
 #define DEBUG 1
 
 /* Definition of input ports */
-#define RAIN_PORT 2 //PD2
-#define DOOR_PORT 3 //PD3
+#define RAIN_PORT 2 //PD2 - INT0
+#define DOOR_PORT 3 //PD3 - INT1
 #define SPEED_ANALOG_PORT 0 // IOPORT3
 
 /* Definition of output ports */
@@ -45,8 +45,8 @@ typedef enum{
 /* Structures and variables */
 volatile uint8_t flag;
 int rainFlag = 0;
-int currentMaxSpeed = 195;
-int maxSpeed = 195; /* Fixed Speed */
+int currentMaxSpeed = 100;
+int maxSpeed = 100; /* Fixed Speed */
 int speed = 0;
 int init_flag = 0;
 float adc_to_speed_cvalue; 
@@ -112,7 +112,7 @@ uint64_t get_adc_conversion(adcsample_t *bufferADC) {
 
 
 void setMaxSpeed(int speed){
-    currentMaxSpeed = speed;
+    maxSpeed = speed;
 }
 
 float speed2DutyCycle(int speed){
@@ -129,9 +129,7 @@ float speed2DutyCycle(int speed){
 }
 
 void motor_output(float dutyCycle){
-  char buffer[10];
-  ltoa(PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed), buffer, 10);
-  pwmEnableChannel(&PWMD1, 1, PWM_FRACTION_TO_WIDTH(&PWMD1, 100, speed));
+  pwmEnableChannel(&PWMD1, 1, PWM_FRACTION_TO_WIDTH(&PWMD1, 100, dutyCycle));
 }
 
 void buzzer_output(int state){
@@ -217,7 +215,8 @@ void st_machine(void) {
       if (doorOpened) {
         state = bus_stopped;
       }
-      ret = is_speed_above_limit(speed, 25);
+      palWritePad(IOPORT4,BUZZER_PORT,0);
+      ret = is_speed_above_limit(speed, 15);
       state = (ret) ? normal_state : waiting_acceleration;
       break;
     case normal_state:
@@ -231,21 +230,39 @@ void st_machine(void) {
       palWritePad(IOPORT4,BUZZER_PORT,0);
       serial_write("Bus Normal State");
       motor_output(speed2DutyCycle(speed));
-      ret = is_speed_above_limit(speed, currentMaxSpeed);
+      ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
-      if (rainFlag && maxSpeed == currentMaxSpeed){
-        state = rain_alert;
+      if (doorOpened && speed <=10) {
+            state = bus_stopped;
       }
+
+      if (palReadPad(IOPORT4,RAIN_PORT) == PAL_LOW){
+            setMaxSpeed(80);
+            state = rain_alert;
+      }else if (palReadPad(IOPORT4,RAIN_PORT) == PAL_HIGH){
+            maxSpeed = 100;
+      } 
+
+      // if (rainFlag && maxSpeed == currentMaxSpeed){
+      //   state = rain_alert;
+      // }
       break;
     case rain_alert:
       /* Functionalities:
           - Update maximum speed
           - Go back to normal state, with an updated maximum speed. 
       */
-      serial_write("Warning! - It is Ranning, maximum speed has changed");    
-      setMaxSpeed(80);
+      palWritePad(IOPORT4,BUZZER_PORT,0);
+      serial_write("Warning! - It is Ranning");    
+      chThdSleepMilliseconds(500);
       motor_output(speed2DutyCycle(speed));
-      state = normal_state;
+      ret = is_speed_above_limit(speed, maxSpeed);
+      state = (ret) ? overspeed_alert : rain_alert;
+      
+      if (palReadPad(IOPORT4,RAIN_PORT) == PAL_HIGH){
+            maxSpeed = 100;
+            state = normal_state;
+      } 
 
       break;
     case overspeed_alert:
@@ -255,7 +272,7 @@ void st_machine(void) {
       */
       serial_write("Warning! - Overspeed");
       buzzer_output(1); 
-      ret = is_speed_above_limit(speed, currentMaxSpeed);
+      ret = is_speed_above_limit(speed, maxSpeed);
       state = (ret) ? overspeed_alert : normal_state;
       break;  
     default:
