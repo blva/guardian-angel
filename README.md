@@ -25,6 +25,8 @@ The usage of an RTOS is important with the usage of threads and interruptions in
 
 ## Specifications
 
+The project implements features envolving Arduino UNO and ChibiOS pheripheral drivers. We have used PWM, Interruptions and ADC conversion.
+
 ## How to run?
 
 First, you need to clone our repository.
