@@ -27,6 +27,11 @@ The usage of an RTOS is important with the usage of threads and interruptions in
 
 The project implements features envolving Arduino UNO and ChibiOS pheripheral drivers. We have used PWM, Interruptions and ADC conversion.
 
+### Fritzing Circuit
+
+### Original Circuit
+![Original Circuit](https://raw.githubusercontent.com/blva/guardian-angel/master/images/circuit.png)
+
 ## How to run?
 
 First, you need to clone our repository.
