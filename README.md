@@ -23,15 +23,6 @@ The system is responsible for safe critical verifications in order to make the b
 
 The usage of an RTOS is important with the usage of threads and interruptions in order to cover all the possible occurrences and guarantee the correct treatment.
 
-## Specifications
-
-The project implements features envolving Arduino UNO and ChibiOS pheripheral drivers. We have used PWM, Interruptions and ADC conversion.
-
-### Fritzing Circuit
-![Fritzing Circuit](https://raw.githubusercontent.com/blva/guardian-angel/master/images/fritzing.png)
-### Original Circuit
-![Original Circuit](https://raw.githubusercontent.com/blva/guardian-angel/master/images/circuit.png)
-
 ## How to run?
 
 First, you need to clone our repository.
@@ -45,3 +36,13 @@ Then, on the downloaded folder, you should run:
 This will clone the ChibiOS folder into your repository folder and then you will be able to run a make command. 
 
     make program
+
+## Specifications
+
+The project implements features envolving Arduino UNO and ChibiOS pheripheral drivers. We have used PWM, Interruptions and ADC conversion.
+
+### Fritzing Circuit
+![Fritzing Circuit](https://raw.githubusercontent.com/blva/guardian-angel/master/images/fritzing.png)
+### Original Circuit
+![Original Circuit](https://raw.githubusercontent.com/blva/guardian-angel/master/images/circuit.png)
+### State Machine
