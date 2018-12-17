@@ -46,3 +46,4 @@ The project implements features envolving Arduino UNO and ChibiOS pheripheral dr
 ### Original Circuit
 ![Original Circuit](https://raw.githubusercontent.com/blva/guardian-angel/master/images/circuit.png)
 ### State Machine
+![State Machine](https://raw.githubusercontent.com/blva/guardian-angel/master/images/stmachine.png)
